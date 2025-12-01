@@ -10,7 +10,7 @@ import { AdminPanel } from './components/AdminPanel';
 import { Folder, Note, ViewMode, User, InspirationItem, EditorSettings, UserStats, Achievement, DailyStat, Template, ToastMessage } from './types';
 import { storage } from './services/storage';
 import { isSupabaseConfigured, saveSupabaseConfig, clearSupabaseConfig, testSupabaseConnection, getConfig } from './services/supabase';
-import { X, Globe, Type, Layout, Maximize, AlertTriangle, Trophy, FolderPlus, FolderInput, Wifi, WifiOff, Cloud, Shield, Database, Check, RefreshCw } from 'lucide-react';
+import { Globe, AlertTriangle, Trophy, FolderPlus, Cloud, Shield, Database, Check, RefreshCw } from 'lucide-react';
 
 // --- ERROR BOUNDARY ---
 class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean, error: Error | null }> {
@@ -289,6 +289,7 @@ const AppContent: React.FC = () => {
   const [newFolderName, setNewFolderName] = useState('');
   const [showMoveNote, setShowMoveNote] = useState(false);
   const [noteToMoveId, setNoteToMoveId] = useState<string | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   
   // Database Config State

@@ -4,9 +4,9 @@ import { createPortal } from 'react-dom';
 import { 
   Bold, Italic, List, ListOrdered, Image as ImageIcon, 
   Type, Wand2, Link as LinkIcon, Menu, 
-  Video, Eye, Heading1, Heading2, Quote, Minus, Download, ListTree, PanelRightOpen, PanelRightClose, Target, Upload, X,
-  Maximize2, Minimize2, Table, PlusSquare, ChevronRight, ToggleLeft, Columns, Trash2, Copy, ArrowDownToLine, MoveVertical, Cloud, Check, AlignLeft, AlignCenter, AlignRight,
-  ArrowUp, ArrowDown, Scissors, AlignJustify, Box, Code, Calendar, Clock, FileText, Highlighter, ArrowUpFromLine, PaintBucket, Eraser
+  Video, Eye, Heading1, Heading2, Quote, Minus, Download, Upload, X,
+  Maximize2, Minimize2, Table, ToggleLeft, Trash2, Copy, ArrowDownToLine, Cloud, 
+  Box, Code, Calendar, Clock, FileText, Highlighter, ArrowUpFromLine, Eraser
 } from 'lucide-react';
 import { Note, EditorSettings } from '../types';
 import { generateWritingAssistance } from '../services/geminiService';
@@ -55,7 +55,6 @@ export const RichEditor: React.FC<RichEditorProps> = ({ note, onUpdate, onSaveHi
   const [isExporting, setIsExporting] = useState(false);
   
   // Layout State
-  const [showOutline, setShowOutline] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   
@@ -90,11 +89,15 @@ export const RichEditor: React.FC<RichEditorProps> = ({ note, onUpdate, onSaveHi
   const [showSocialPreview, setShowSocialPreview] = useState(false);
   
   // Stats State
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [headings, setHeadings] = useState<HeadingItem[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [wordCount, setWordCount] = useState(0);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [charCount, setCharCount] = useState(0);
 
   // Table State
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [isInsideTable, setIsInsideTable] = useState(false);
 
   useEffect(() => {
@@ -320,9 +323,6 @@ export const RichEditor: React.FC<RichEditorProps> = ({ note, onUpdate, onSaveHi
     document.execCommand('styleWithCSS', false, 'false');
     handleInput();
   };
-
-  const insertTableRow = () => { /* ... (same as before) ... */ };
-  const insertTableColumn = () => { /* ... (same as before) ... */ };
   
   const restoreSelection = () => {
       const selection = window.getSelection();

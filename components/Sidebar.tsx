@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Folder, Plus, FileText, ChevronRight, ChevronDown, Settings, Trash2, LayoutDashboard, Sun, Moon, X, Lightbulb, LogOut, FolderInput, LayoutTemplate, MoreVertical, ArrowUp, ArrowDown, Music, Volume2, VolumeX, Play, Pause, Volume1, SkipForward, SkipBack, ListMusic } from 'lucide-react';
+import { Plus, FileText, ChevronRight, ChevronDown, Settings, Trash2, LayoutDashboard, Sun, Moon, X, Lightbulb, LogOut, FolderInput, LayoutTemplate, ArrowUp, ArrowDown, Music, Volume2, VolumeX, Play, Pause, Volume1, SkipForward, SkipBack, ListMusic } from 'lucide-react';
 import { Folder as FolderType, Note, ViewMode, User, Template } from '../types';
 
 interface SidebarProps {

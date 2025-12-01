@@ -1,6 +1,7 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { InspirationItem, InspirationType } from '../types';
-import { Plus, Link as LinkIcon, Image as ImageIcon, Video, Type, Trash2, Sparkles, X, Move, Edit2, ZoomIn, ZoomOut, MousePointer2, Search, LayoutGrid, List, Quote } from 'lucide-react';
+import { Plus, Link as LinkIcon, Image as ImageIcon, Video, Type, Trash2, Sparkles, X, Edit2, ZoomIn, ZoomOut, MousePointer2, Search, LayoutGrid, List, Quote } from 'lucide-react';
 import { generateWritingAssistance } from '../services/geminiService';
 
 interface InspirationBoardProps {
