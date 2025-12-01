@@ -1,6 +1,6 @@
 
-import React, { useState } from 'react';
-import { Folder, Plus, FileText, ChevronRight, ChevronDown, Settings, Trash2, LayoutDashboard, Sun, Moon, X, Lightbulb, LogOut, FolderInput, LayoutTemplate, MoreVertical, ArrowUp, ArrowDown } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Folder, Plus, FileText, ChevronRight, ChevronDown, Settings, Trash2, LayoutDashboard, Sun, Moon, X, Lightbulb, LogOut, FolderInput, LayoutTemplate, MoreVertical, ArrowUp, ArrowDown, Music, Volume2, VolumeX, Play, Pause, Volume1 } from 'lucide-react';
 import { Folder as FolderType, Note, ViewMode, User, Template } from '../types';
 
 interface SidebarProps {
@@ -56,9 +56,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(folders.map(f => f.id)));
   const [showTemplates, setShowTemplates] = useState(false);
-  
-  // Folder editing state
   const [editingFolderId, setEditingFolderId] = useState<string | null>(null);
+  const hasInitializedExpansion = useRef(false);
+
+  // Auto-expand folders when they load (if not already done)
+  useEffect(() => {
+    if (!hasInitializedExpansion.current && folders.length > 0) {
+        setExpandedFolders(new Set(folders.map(f => f.id)));
+        hasInitializedExpansion.current = true;
+    }
+  }, [folders]);
+
+  // Music Player State
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const [volume, setVolume] = useState(0.3);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const toggleFolder = (folderId: string) => {
     const newSet = new Set(expandedFolders);
@@ -66,6 +79,49 @@ export const Sidebar: React.FC<SidebarProps> = ({
     else newSet.add(folderId);
     setExpandedFolders(newSet);
   };
+
+  const toggleMusic = () => {
+    if (!audioRef.current) return;
+    if (isPlaying) {
+      audioRef.current.pause();
+    } else {
+      audioRef.current.play().catch(e => console.error("Audio play failed:", e));
+    }
+    setIsPlaying(!isPlaying);
+  };
+
+  const toggleMute = () => {
+    if (!audioRef.current) return;
+    audioRef.current.muted = !isMuted;
+    setIsMuted(!isMuted);
+  };
+
+  // Handle Volume Change
+  const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const newVol = parseFloat(e.target.value);
+      setVolume(newVol);
+      if (audioRef.current) {
+          audioRef.current.volume = newVol;
+      }
+      if (newVol > 0 && isMuted) {
+          setIsMuted(false);
+          if (audioRef.current) audioRef.current.muted = false;
+      }
+  };
+
+  useEffect(() => {
+    // Initialize audio
+    audioRef.current = new Audio("https://upload.wikimedia.org/wikipedia/commons/e/e6/Erik_Satie_-_Gymnopedie_No_1.ogg");
+    audioRef.current.loop = true;
+    audioRef.current.volume = volume;
+    
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+    };
+  }, []);
 
   const FOLDER_COLORS = [
       { name: 'Stone', value: '#78716c' },
@@ -359,8 +415,47 @@ export const Sidebar: React.FC<SidebarProps> = ({
           })}
         </div>
 
-        {/* Footer */}
-        <div className="p-4 border-t border-paper-200 dark:border-stone-800 space-y-1">
+        {/* Music Player & Footer */}
+        <div className="p-4 border-t border-paper-200 dark:border-stone-800 space-y-1 bg-paper-100 dark:bg-stone-900 z-10">
+          
+          {/* Classical Music Player */}
+          <div className="mb-3 p-3 bg-paper-200 dark:bg-stone-800 rounded-lg flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                      <div className="p-2 bg-stone-300 dark:bg-stone-700 rounded-full text-stone-600 dark:text-stone-300">
+                          <Music size={14} />
+                      </div>
+                      <div>
+                          <div className="text-xs font-bold text-ink-900 dark:text-stone-100 font-serif">Classical Focus</div>
+                          <div className="text-[10px] text-stone-500 truncate max-w-[80px]">Gymnopédie No.1</div>
+                      </div>
+                  </div>
+                  <div className="flex items-center gap-1">
+                      <button onClick={toggleMusic} className="p-1.5 hover:bg-stone-300 dark:hover:bg-stone-700 rounded text-ink-900 dark:text-stone-200">
+                          {isPlaying ? <Pause size={14} /> : <Play size={14} />}
+                      </button>
+                      <button onClick={toggleMute} className="p-1.5 hover:bg-stone-300 dark:hover:bg-stone-700 rounded text-stone-500">
+                          {isMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
+                      </button>
+                  </div>
+              </div>
+              
+              {/* Volume Slider */}
+              <div className="flex items-center gap-2 px-1">
+                  <Volume1 size={12} className="text-stone-400" />
+                  <input 
+                      type="range" 
+                      min="0" 
+                      max="1" 
+                      step="0.05" 
+                      value={volume} 
+                      onChange={handleVolumeChange}
+                      className="w-full h-1 bg-stone-300 dark:bg-stone-700 rounded-lg appearance-none cursor-pointer accent-ink-900 dark:accent-stone-200"
+                  />
+                  <Volume2 size={12} className="text-stone-400" />
+              </div>
+          </div>
+
           <button 
               onClick={onToggleTheme}
               className="flex items-center gap-3 text-sm text-stone-600 dark:text-stone-400 hover:text-ink-900 dark:hover:text-stone-200 w-full px-3 py-2 rounded hover:bg-paper-200 dark:hover:bg-stone-800 transition-colors"

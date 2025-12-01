@@ -162,13 +162,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ notes, stats, onToggleSide
                     <div className="absolute inset-0 flex items-end justify-between px-2 sm:px-8 gap-4 z-10">
                         {chartData.map((day, idx) => {
                             const heightPercent = maxDaily > 0 ? (day.count / maxDaily) * 100 : 0;
+                            // Ensure tiny bars are visible if count > 0
+                            const visualHeight = day.count > 0 ? Math.max(heightPercent, 2) : 0;
+                            
                             return (
                                 <div key={idx} className="flex-1 flex flex-col items-center group h-full justify-end">
                                     <div className="w-full max-w-[50px] relative flex flex-col justify-end h-full">
                                         <div 
                                             // CHANGED: Hover color to stone-400 (Silver)
-                                            className="w-full bg-ink-900 dark:bg-stone-200 rounded-t-sm hover:bg-stone-700 dark:hover:bg-stone-400 transition-all duration-500 relative group-hover:shadow-lg cursor-pointer min-h-[4px]"
-                                            style={{ height: `${heightPercent}%` }}
+                                            className="w-full bg-ink-900 dark:bg-stone-200 rounded-t-sm hover:bg-stone-700 dark:hover:bg-stone-400 transition-all duration-500 relative group-hover:shadow-lg cursor-pointer"
+                                            style={{ height: `${visualHeight}%` }}
                                         >
                                             {/* Tooltip */}
                                             <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-black dark:bg-white dark:text-black text-white text-[10px] py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-20 font-bold shadow-lg pointer-events-none">

@@ -1,7 +1,6 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { InspirationItem, InspirationType } from '../types';
-import { Plus, Link as LinkIcon, Image as ImageIcon, Video, Type, Trash2, Sparkles, X, Move, Edit2, ZoomIn, ZoomOut, MousePointer2, Search, LayoutGrid, List } from 'lucide-react';
+import { Plus, Link as LinkIcon, Image as ImageIcon, Video, Type, Trash2, Sparkles, X, Move, Edit2, ZoomIn, ZoomOut, MousePointer2, Search, LayoutGrid, List, Quote } from 'lucide-react';
 import { generateWritingAssistance } from '../services/geminiService';
 
 interface InspirationBoardProps {
@@ -14,6 +13,7 @@ interface InspirationBoardProps {
 
 export const InspirationBoard: React.FC<InspirationBoardProps> = ({ items, onAddItem, onUpdateItem, onDeleteItem, onToggleSidebar }) => {
   const [showModal, setShowModal] = useState(false);
+  const [showGallery, setShowGallery] = useState(false);
   const [editingItem, setEditingItem] = useState<InspirationItem | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState<'board' | 'list'>('board');
@@ -39,6 +39,8 @@ export const InspirationBoard: React.FC<InspirationBoardProps> = ({ items, onAdd
           (item.snippet && item.snippet.toLowerCase().includes(lowerTerm))
       );
   });
+  
+  const highlights = items.filter(i => i.type === 'highlight');
 
   // --- Canvas Navigation ---
 
@@ -156,6 +158,13 @@ export const InspirationBoard: React.FC<InspirationBoardProps> = ({ items, onAdd
                         className="bg-stone-100 dark:bg-stone-800 border-none rounded-full py-2 pl-9 pr-4 text-sm w-48 focus:w-64 transition-all outline-none focus:ring-2 focus:ring-stone-400 dark:text-stone-200"
                     />
                 </div>
+                
+                <button 
+                    onClick={() => setShowGallery(true)}
+                    className="flex items-center gap-2 px-3 py-2 bg-yellow-100 hover:bg-yellow-200 dark:bg-yellow-900/30 dark:hover:bg-yellow-900/50 text-yellow-800 dark:text-yellow-200 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors"
+                >
+                    <Quote size={16} /> Highlights
+                </button>
             </div>
             
             <div className="flex gap-2 pointer-events-auto self-end md:self-auto">
@@ -233,7 +242,11 @@ export const InspirationBoard: React.FC<InspirationBoardProps> = ({ items, onAdd
                         {filteredItems.map(item => (
                             <div
                                 key={item.id}
-                                className="absolute group shadow-md hover:shadow-2xl hover:scale-[1.02] transition-all rounded-lg bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 w-64 md:w-80 select-none animate-fadeIn"
+                                className={`absolute group shadow-md hover:shadow-2xl hover:scale-[1.02] transition-all rounded-lg border w-64 md:w-80 select-none animate-fadeIn
+                                    ${item.type === 'highlight' 
+                                        ? 'bg-yellow-50 dark:bg-yellow-900/10 border-yellow-200 dark:border-yellow-900/30'
+                                        : 'bg-white dark:bg-stone-900 border-stone-200 dark:border-stone-800'}
+                                `}
                                 style={{ 
                                     left: item.x ?? 0, 
                                     top: item.y ?? 0,
@@ -242,17 +255,21 @@ export const InspirationBoard: React.FC<InspirationBoardProps> = ({ items, onAdd
                             >
                                 {/* Drag Handle */}
                                 <div 
-                                    className="h-8 bg-stone-100 dark:bg-stone-800 rounded-t-lg cursor-move flex items-center justify-between px-3 border-b border-stone-200 dark:border-stone-700"
+                                    className={`h-8 rounded-t-lg cursor-move flex items-center justify-between px-3 border-b
+                                        ${item.type === 'highlight'
+                                            ? 'bg-yellow-100 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-900/30'
+                                            : 'bg-stone-100 dark:bg-stone-800 border-stone-200 dark:border-stone-700'}
+                                    `}
                                     onMouseDown={(e) => handleItemMouseDown(e, item)}
                                 >
                                     <div className="flex items-center gap-2 text-stone-400">
-                                        <MousePointer2 size={12} />
+                                        {item.type === 'highlight' ? <Quote size={12} className="text-yellow-600 dark:text-yellow-500" /> : <MousePointer2 size={12} />}
                                     </div>
                                     <div className="flex gap-1">
-                                        <button onClick={() => handleEdit(item)} className="p-1 text-stone-400 hover:text-blue-500 rounded hover:bg-stone-200 dark:hover:bg-stone-700">
+                                        <button onClick={() => handleEdit(item)} className="p-1 text-stone-400 hover:text-blue-500 rounded hover:bg-black/5">
                                             <Edit2 size={12} />
                                         </button>
-                                        <button onClick={() => onDeleteItem(item.id)} className="p-1 text-stone-400 hover:text-red-500 rounded hover:bg-stone-200 dark:hover:bg-stone-700">
+                                        <button onClick={() => onDeleteItem(item.id)} className="p-1 text-stone-400 hover:text-red-500 rounded hover:bg-black/5">
                                             <Trash2 size={12} />
                                         </button>
                                     </div>
@@ -277,13 +294,22 @@ export const InspirationBoard: React.FC<InspirationBoardProps> = ({ items, onAdd
                                         {item.type === 'text' && (
                                             <p className="text-sm font-serif italic text-stone-600 dark:text-stone-300 whitespace-pre-wrap">{item.content}</p>
                                         )}
+                                        {item.type === 'highlight' && (
+                                            <div className="relative">
+                                                 <Quote size={24} className="absolute -top-2 -left-2 text-yellow-300 dark:text-yellow-900/50 opacity-50" />
+                                                 <p className="text-lg font-serif leading-relaxed text-ink-900 dark:text-stone-100 relative z-10 px-2">
+                                                     {item.content}
+                                                 </p>
+                                                 {item.snippet && <p className="text-xs text-stone-500 mt-2 text-right">— {item.snippet}</p>}
+                                            </div>
+                                        )}
                                         {(item.type === 'link' || item.type === 'video') && (
                                             <div className="text-xs text-stone-500 truncate mt-2 bg-stone-100 dark:bg-stone-800 p-1 rounded">
                                                 <LinkIcon size={10} className="inline mr-1" />
                                                 {item.content}
                                             </div>
                                         )}
-                                        {item.snippet && (
+                                        {item.snippet && item.type !== 'highlight' && (
                                             <div className="mt-3 bg-purple-50 dark:bg-purple-900/20 p-2 rounded text-xs text-stone-600 dark:text-stone-400 font-serif border-l-2 border-purple-400">
                                                 <Sparkles size={10} className="inline mr-1 text-purple-500" />
                                                 {item.snippet}
@@ -318,6 +344,7 @@ export const InspirationBoard: React.FC<InspirationBoardProps> = ({ items, onAdd
                                             {item.type === 'image' && <ImageIcon size={18} />}
                                             {item.type === 'video' && <Video size={18} />}
                                             {item.type === 'link' && <LinkIcon size={18} />}
+                                            {item.type === 'highlight' && <Quote size={18} className="text-yellow-500" />}
                                         </td>
                                         <td className="px-6 py-4">
                                             {item.title && <div className="font-bold text-ink-900 dark:text-stone-200 text-sm mb-1">{item.title}</div>}
@@ -375,8 +402,58 @@ export const InspirationBoard: React.FC<InspirationBoardProps> = ({ items, onAdd
                 existingItem={editingItem}
             />
         )}
+        
+        {/* Gallery Modal */}
+        {showGallery && (
+            <HighlightsGallery 
+                highlights={highlights}
+                onClose={() => setShowGallery(false)}
+            />
+        )}
     </div>
   );
+};
+
+const HighlightsGallery: React.FC<{ highlights: InspirationItem[], onClose: () => void }> = ({ highlights, onClose }) => {
+    return (
+        <div className="fixed inset-0 bg-stone-100 dark:bg-stone-950 z-[100] overflow-y-auto animate-fadeIn flex flex-col">
+            <div className="p-6 md:p-10 max-w-7xl mx-auto w-full flex-1">
+                <div className="flex justify-between items-center mb-12">
+                     <div>
+                        <h2 className="text-4xl font-serif font-bold text-ink-900 dark:text-stone-100">Highlights Gallery</h2>
+                        <p className="text-stone-500 italic mt-2">A collection of your favorite passages.</p>
+                     </div>
+                     <button onClick={onClose} className="p-2 bg-white dark:bg-stone-800 rounded-full hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors">
+                         <X size={24} className="text-stone-500" />
+                     </button>
+                </div>
+                
+                {highlights.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-96 text-stone-400">
+                        <Quote size={64} className="mb-4 opacity-20" />
+                        <p className="font-serif text-xl">No highlights yet.</p>
+                        <p className="text-sm mt-2">Use the highlight tool in the editor to save passages here.</p>
+                    </div>
+                ) : (
+                    <div className="columns-1 md:columns-2 lg:columns-3 gap-8 space-y-8">
+                        {highlights.map(item => (
+                            <div key={item.id} className="break-inside-avoid bg-white dark:bg-stone-900 p-8 rounded shadow-sm border border-stone-200 dark:border-stone-800 relative group hover:shadow-lg transition-shadow">
+                                <Quote size={32} className="text-yellow-400 dark:text-yellow-600/50 mb-4" />
+                                <p className="font-serif text-xl leading-relaxed text-ink-900 dark:text-stone-200">
+                                    {item.content}
+                                </p>
+                                {item.snippet && (
+                                    <div className="mt-6 pt-6 border-t border-stone-100 dark:border-stone-800 text-sm text-stone-500 font-bold uppercase tracking-widest text-right">
+                                        {item.snippet.replace('From note: ', '')}
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
 };
 
 const InspirationModal: React.FC<{ 
@@ -433,23 +510,24 @@ const InspirationModal: React.FC<{
                 
                 <form onSubmit={handleSubmit} className="p-6 space-y-4">
                     {/* Type Selector */}
-                    <div className="grid grid-cols-4 gap-2 mb-4">
-                        {(['text', 'image', 'video', 'link'] as InspirationType[]).map(t => (
+                    <div className="grid grid-cols-5 gap-2 mb-4">
+                        {(['text', 'image', 'video', 'link', 'highlight'] as InspirationType[]).map(t => (
                             <button
                                 key={t}
                                 type="button"
                                 onClick={() => setType(t)}
-                                className={`flex flex-col items-center justify-center p-3 rounded border transition-all
+                                className={`flex flex-col items-center justify-center p-2 rounded border transition-all
                                     ${type === t 
                                         ? 'bg-ink-900 text-white border-ink-900 dark:bg-stone-100 dark:text-stone-900' 
                                         : 'bg-paper-50 dark:bg-stone-800 text-stone-500 border-transparent hover:bg-paper-200'}
                                 `}
                             >
-                                {t === 'text' && <Type size={18} />}
-                                {t === 'image' && <ImageIcon size={18} />}
-                                {t === 'video' && <Video size={18} />}
-                                {t === 'link' && <LinkIcon size={18} />}
-                                <span className="text-[10px] uppercase font-bold mt-1">{t}</span>
+                                {t === 'text' && <Type size={16} />}
+                                {t === 'image' && <ImageIcon size={16} />}
+                                {t === 'video' && <Video size={16} />}
+                                {t === 'link' && <LinkIcon size={16} />}
+                                {t === 'highlight' && <Quote size={16} />}
+                                <span className="text-[9px] uppercase font-bold mt-1">{t.slice(0, 4)}</span>
                             </button>
                         ))}
                     </div>
@@ -466,9 +544,9 @@ const InspirationModal: React.FC<{
 
                     <div>
                         <label className="block text-xs font-bold uppercase text-stone-400 mb-1">
-                            {type === 'text' ? 'Quote / Text' : 'URL'}
+                            {type === 'text' || type === 'highlight' ? 'Quote / Text' : 'URL'}
                         </label>
-                        {type === 'text' ? (
+                        {type === 'text' || type === 'highlight' ? (
                             <textarea 
                                 className="w-full h-32 bg-paper-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded p-2 text-sm outline-none focus:border-stone-500 resize-none font-serif"
                                 placeholder="Paste text here..."

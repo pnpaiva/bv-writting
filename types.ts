@@ -16,7 +16,7 @@ export interface Folder {
 
 export type ViewMode = 'editor' | 'dashboard' | 'inspiration' | 'folder' | 'admin';
 
-export type InspirationType = 'image' | 'video' | 'text' | 'link';
+export type InspirationType = 'image' | 'video' | 'text' | 'link' | 'highlight';
 
 export interface InspirationItem {
   id: string;

@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Lock, ArrowRight } from 'lucide-react';
 import { User } from '../types';
@@ -19,13 +18,17 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, users }) => {
     setError('');
     setLoading(true);
 
+    // Normalize email to prevent "Pedro" vs "pedro" database mismatch
+    const normalizedEmail = email.toLowerCase().trim();
+
     // Simulated network delay
     setTimeout(() => {
       // Find matching user in the database
-      const user = users.find(u => u.email.toLowerCase() === email.toLowerCase() && u.password === password);
+      const user = users.find(u => u.email.toLowerCase() === normalizedEmail && u.password === password);
 
       if (user) {
-        onLogin(user);
+        // Pass the normalized user object up
+        onLogin({ ...user, email: normalizedEmail });
       } else {
         setError('Invalid credentials. The gatekeeper does not recognize you.');
       }

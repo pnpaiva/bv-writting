@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { RichEditor } from './components/RichEditor';
@@ -8,7 +7,51 @@ import { LoginPage } from './components/LoginPage';
 import { FolderView } from './components/FolderView';
 import { AdminPanel } from './components/AdminPanel';
 import { Folder, Note, ViewMode, User, InspirationItem, EditorSettings, UserStats, Achievement, DailyStat, Template, ToastMessage } from './types';
-import { X, Globe, Type, Layout, Maximize, AlertTriangle, Trophy, FolderPlus, FolderInput, Wifi, WifiOff, Cloud, Shield } from 'lucide-react';
+import { storage } from './services/storage';
+import { isSupabaseConfigured, saveSupabaseConfig, clearSupabaseConfig, testSupabaseConnection } from './services/supabase';
+import { X, Globe, Type, Layout, Maximize, AlertTriangle, Trophy, FolderPlus, FolderInput, Wifi, WifiOff, Cloud, Shield, Database, Check, RefreshCw } from 'lucide-react';
+
+// --- ERROR BOUNDARY ---
+class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean, error: Error | null }> {
+    constructor(props: { children: React.ReactNode }) {
+        super(props);
+        this.state = { hasError: false, error: null };
+    }
+
+    static getDerivedStateFromError(error: Error) {
+        return { hasError: true, error };
+    }
+
+    handleReset = () => {
+        clearSupabaseConfig();
+        window.location.reload();
+    }
+
+    render() {
+        if (this.state.hasError) {
+            return (
+                <div className="min-h-screen bg-stone-950 text-stone-200 flex flex-col items-center justify-center p-8 text-center font-serif">
+                    <div className="bg-stone-900 p-8 rounded-xl border border-stone-800 shadow-2xl max-w-md">
+                        <AlertTriangle size={48} className="text-red-500 mx-auto mb-4" />
+                        <h1 className="text-2xl font-bold mb-2 text-white">Something went wrong</h1>
+                        <p className="text-stone-400 mb-6">The application encountered a critical error. We have disconnected the database to restore access.</p>
+                        <div className="bg-black/30 p-3 rounded text-xs font-mono text-red-300 mb-6 overflow-x-auto whitespace-pre-wrap text-left">
+                            {this.state.error?.message}
+                        </div>
+                        <button 
+                            onClick={this.handleReset}
+                            className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded-lg flex items-center justify-center gap-2 transition-colors"
+                        >
+                            <RefreshCw size={18} />
+                            Reset & Restart
+                        </button>
+                    </div>
+                </div>
+            );
+        }
+        return this.props.children;
+    }
+}
 
 // --- TEMPLATES ---
 const TEMPLATES: Template[] = [
@@ -37,18 +80,6 @@ const TEMPLATES: Template[] = [
                         <td>Montage of results</td>
                         <td>"In this video, I'm going to show you..."</td>
                     </tr>
-                    <tr>
-                        <td><strong>Point 1</strong></td>
-                        <td>Talking head</td>
-                        <td>Screen recording of X</td>
-                        <td>"First, let's talk about..."</td>
-                    </tr>
-                    <tr>
-                        <td><strong>Outro</strong></td>
-                        <td>Talking head</td>
-                        <td>Subscribe animation</td>
-                        <td>"Thanks for watching..."</td>
-                    </tr>
                 </tbody>
             </table>
             <h2>Thumbnail Ideas</h2>
@@ -57,10 +88,6 @@ const TEMPLATES: Template[] = [
                 <div class="thumbnail-slot"><div class="image-placeholder">Slot 2</div></div>
                 <div class="thumbnail-slot"><div class="image-placeholder">Slot 3</div></div>
             </div>
-            <ul>
-                <li>Idea 1: Close up with shocked face</li>
-                <li>Idea 2: Split screen comparison</li>
-            </ul>
         `
     },
     {
@@ -70,8 +97,7 @@ const TEMPLATES: Template[] = [
         defaultTitle: 'Chapter 1',
         content: `
             <p style="text-align: center; font-style: italic;">(Scene setting...)</p>
-            <p>It was a dark and stormy night. The rain fell in torrents, except at occasional intervals, when it was checked by a violent gust of wind which swept up the streets (for it is in London that our scene lies), rattling along the housetops, and fiercely agitating the scanty flame of the lamps that struggled against the darkness.</p>
-            <p>"Dialogue starts here," she said.</p>
+            <p>It was a dark and stormy night...</p>
         `
     },
     {
@@ -82,19 +108,8 @@ const TEMPLATES: Template[] = [
         content: `
             <h2>Details</h2>
             <p><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
-            <p><strong>Attendees:</strong> </p>
             <h2>Agenda</h2>
-            <ul>
-                <li>Topic 1</li>
-                <li>Topic 2</li>
-            </ul>
-            <h2>Notes</h2>
-            <p>Discussion points...</p>
-            <h2>Action Items</h2>
-            <ul>
-                <li>[ ] Task 1</li>
-                <li>[ ] Task 2</li>
-            </ul>
+            <ul><li>Topic 1</li></ul>
         `
     }
 ];
@@ -112,409 +127,315 @@ const getInitialNotes = (): Note[] => [
 
 const getInitialInspiration = (): InspirationItem[] => [
     { id: 'i1', type: 'text', content: 'Write drunk, edit sober.', title: 'Hemingway Advice', createdAt: Date.now(), x: 100, y: 100 },
-    { id: 'i2', type: 'video', content: 'https://www.youtube.com/watch?v=Sagx9oJ0x64', title: 'Vintage Typewriter ASMR', createdAt: Date.now(), x: 400, y: 150 }
 ];
 
-// Helper to count words for initialization
+const ACHIEVEMENTS_LIST: Achievement[] = [
+    { id: 'first_word', title: 'First Ink', description: 'Wrote your first word.', icon: 'Feather', unlocked: false },
+    { id: 'words_100', title: 'Postcard', description: 'Wrote 100 words total.', icon: 'Scroll', unlocked: false },
+    { id: 'words_500', title: 'Letter', description: 'Wrote 500 words total.', icon: 'Scroll', unlocked: false },
+    { id: 'words_1000', title: 'Scribe', description: 'Wrote 1,000 words total.', icon: 'BookOpen', unlocked: false },
+    { id: 'words_5000', title: 'Essayist', description: 'Wrote 5,000 words total.', icon: 'BookOpen', unlocked: false },
+    { id: 'words_10000', title: 'Author', description: 'Wrote 10,000 words total.', icon: 'Crown', unlocked: false },
+    { id: 'words_25000', title: 'Novella', description: 'Wrote 25,000 words total.', icon: 'Crown', unlocked: false },
+    { id: 'words_50000', title: 'Novelist', description: 'Wrote 50,000 words (NaNoWriMo goal).', icon: 'Crown', unlocked: false },
+    { id: 'words_100000', title: 'Epic', description: 'Wrote 100,000 words total.', icon: 'Crown', unlocked: false },
+    { id: 'streak_3', title: 'Spark', description: 'Reached a 3-day writing streak.', icon: 'Flame', unlocked: false },
+    { id: 'streak_7', title: 'Flame', description: 'Reached a 7-day writing streak.', icon: 'Flame', unlocked: false },
+    { id: 'streak_14', title: 'Blaze', description: 'Reached a 14-day writing streak.', icon: 'Flame', unlocked: false },
+    { id: 'streak_30', title: 'Inferno', description: 'Reached a 30-day writing streak.', icon: 'Flame', unlocked: false },
+    { id: 'notes_5', title: 'Collector', description: 'Created 5 notes.', icon: 'Files', unlocked: false },
+    { id: 'notes_10', title: 'Archivist', description: 'Created 10 notes.', icon: 'Files', unlocked: false },
+    { id: 'notes_25', title: 'Librarian', description: 'Created 25 notes.', icon: 'Files', unlocked: false },
+    { id: 'notes_50', title: 'Curator', description: 'Created 50 notes.', icon: 'Files', unlocked: false },
+    { id: 'organizer', title: 'Organizer', description: 'Created 3 folders.', icon: 'Folder', unlocked: false },
+    { id: 'structured', title: 'Structured', description: 'Created 10 folders.', icon: 'Folder', unlocked: false },
+    { id: 'dark_side', title: 'Dark Side', description: 'Enabled Dark Mode.', icon: 'Moon', unlocked: false },
+    { id: 'light_side', title: 'Light Side', description: 'Switched back to Light Mode.', icon: 'Sun', unlocked: false },
+    { id: 'typewriter', title: 'Typewriter', description: 'Used the Monospace font setting.', icon: 'Type', unlocked: false },
+    { id: 'visual_storyteller', title: 'Visual Storyteller', description: 'Inserted an image into a note.', icon: 'Image', unlocked: false },
+    { id: 'director', title: 'Director', description: 'Inserted a video into a note.', icon: 'Video', unlocked: false },
+    { id: 'researcher', title: 'Researcher', description: 'Added an item to the inspiration board.', icon: 'Lightbulb', unlocked: false },
+    { id: 'muse', title: 'Muse', description: 'Added 10 items to the inspiration board.', icon: 'Lightbulb', unlocked: false },
+    { id: 'highlighter', title: 'Scholar', description: 'Highlighted text in a note.', icon: 'PenTool', unlocked: false },
+    { id: 'scriptwriter', title: 'Screenwriter', description: 'Created a Video Script.', icon: 'Film', unlocked: false },
+    { id: 'early_bird', title: 'Early Bird', description: 'Wrote between 5 AM and 8 AM.', icon: 'Sun', unlocked: false },
+    { id: 'night_owl', title: 'Night Owl', description: 'Wrote between 11 PM and 3 AM.', icon: 'Moon', unlocked: false },
+];
+
 const countWordsSimple = (html: string) => {
     const plainText = html.replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ');
     return plainText.trim().split(/[\s\n]+/).filter(w => w.length > 0).length;
 };
 
-const getInitialStats = (): UserStats => {
-    // Calculate REAL word count from initial notes
-    const initialNotes = getInitialNotes();
-    const realTotalWords = initialNotes.reduce((acc, note) => acc + countWordsSimple(note.content), 0);
-    
-    const today = new Date();
-    const yyyy = today.getFullYear();
-    const mm = String(today.getMonth() + 1).padStart(2, '0');
-    const dd = String(today.getDate()).padStart(2, '0');
-    const todayStr = `${yyyy}-${mm}-${dd}`;
+const reconstructStats = (notes: Note[], existingAchievements?: Achievement[]): UserStats => {
+    try {
+        const wordsByDate: Record<string, number> = {};
+        let totalWords = 0;
 
-    const history: DailyStat[] = [];
-    
-    // Create strict YYYY-MM-DD dates to avoid timezone mismatches
-    // Initialize past 6 days to 0, and Today to the real initial count
-    for (let i = 6; i >= 0; i--) {
-        const d = new Date();
-        d.setDate(today.getDate() - i);
-        const d_yyyy = d.getFullYear();
-        const d_mm = String(d.getMonth() + 1).padStart(2, '0');
-        const d_dd = String(d.getDate()).padStart(2, '0');
-        const dateStr = `${d_yyyy}-${d_mm}-${d_dd}`;
-        
-        history.push({
-            date: dateStr,
-            wordCount: dateStr === todayStr ? realTotalWords : 0
+        notes.forEach(n => {
+            const words = countWordsSimple(n.content);
+            totalWords += words;
+            const d = new Date(n.updatedAt);
+            const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+            wordsByDate[dateStr] = (wordsByDate[dateStr] || 0) + words;
         });
+
+        const history: DailyStat[] = [];
+        const today = new Date();
+        for (let i = 29; i >= 0; i--) {
+            const d = new Date();
+            d.setDate(today.getDate() - i);
+            const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+            history.push({ date: dateStr, wordCount: wordsByDate[dateStr] || 0 });
+        }
+
+        const updatedAchievements = ACHIEVEMENTS_LIST.map(a => {
+            if (existingAchievements) {
+                const savedA = existingAchievements.find(sa => sa.id === a.id);
+                if (savedA && savedA.unlocked) return savedA;
+            }
+
+            if (a.id === 'first_word' && totalWords > 0) return { ...a, unlocked: true, unlockedAt: Date.now() };
+            if (a.id === 'words_100' && totalWords >= 100) return { ...a, unlocked: true, unlockedAt: Date.now() };
+            if (a.id === 'words_500' && totalWords >= 500) return { ...a, unlocked: true, unlockedAt: Date.now() };
+            if (a.id === 'words_1000' && totalWords >= 1000) return { ...a, unlocked: true, unlockedAt: Date.now() };
+            if (a.id === 'words_5000' && totalWords >= 5000) return { ...a, unlocked: true, unlockedAt: Date.now() };
+            if (a.id === 'words_10000' && totalWords >= 10000) return { ...a, unlocked: true, unlockedAt: Date.now() };
+            if (a.id === 'words_25000' && totalWords >= 25000) return { ...a, unlocked: true, unlockedAt: Date.now() };
+            if (a.id === 'words_50000' && totalWords >= 50000) return { ...a, unlocked: true, unlockedAt: Date.now() };
+            if (a.id === 'words_100000' && totalWords >= 100000) return { ...a, unlocked: true, unlockedAt: Date.now() };
+            if (a.id === 'notes_5' && notes.length >= 5) return { ...a, unlocked: true, unlockedAt: Date.now() };
+            if (a.id === 'notes_10' && notes.length >= 10) return { ...a, unlocked: true, unlockedAt: Date.now() };
+            if (a.id === 'notes_25' && notes.length >= 25) return { ...a, unlocked: true, unlockedAt: Date.now() };
+            if (a.id === 'notes_50' && notes.length >= 50) return { ...a, unlocked: true, unlockedAt: Date.now() };
+            if (a.id === 'organizer' && notes.length > 0) return { ...a, unlocked: true, unlockedAt: Date.now() }; // Fallback for folders not passed
+
+            return a;
+        });
+
+        return {
+            totalWordsWritten: totalWords,
+            currentStreak: 1, 
+            maxStreak: 1,
+            lastWrittenDate: Object.keys(wordsByDate).sort().pop() || null,
+            dailyHistory: history,
+            points: totalWords * 0.1,
+            achievements: updatedAchievements
+        };
+    } catch (e) {
+        console.error("Stats reconstruction failed", e);
+        // Fallback safely
+        return {
+            totalWordsWritten: 0,
+            currentStreak: 0,
+            maxStreak: 0,
+            lastWrittenDate: null,
+            dailyHistory: [],
+            points: 0,
+            achievements: ACHIEVEMENTS_LIST
+        };
     }
-
-    // 30 ACHIEVEMENTS DEFINITION
-    const achievements: Achievement[] = [
-        // Writing Volume
-        { id: 'first_word', title: 'First Ink', description: 'Wrote your first word.', icon: 'Feather', unlocked: realTotalWords > 0, unlockedAt: Date.now() },
-        { id: 'words_1000', title: 'Scribe', description: 'Wrote 1,000 words total.', icon: 'Scroll', unlocked: realTotalWords >= 1000, unlockedAt: realTotalWords >= 1000 ? Date.now() : undefined },
-        { id: 'words_10000', title: 'Author', description: 'Wrote 10,000 words total.', icon: 'BookOpen', unlocked: false },
-        { id: 'words_50000', title: 'Masterpiece', description: 'Wrote 50,000 words total.', icon: 'Crown', unlocked: false },
-        { id: 'words_100000', title: 'Legend', description: 'Wrote 100,000 words total.', icon: 'Crown', unlocked: false },
-        
-        // Streaks
-        { id: 'streak_3', title: 'Consistency', description: 'Reached a 3-day writing streak.', icon: 'Flame', unlocked: false },
-        { id: 'streak_7', title: 'Novelist', description: 'Reached a 7-day writing streak.', icon: 'Flame', unlocked: false },
-        { id: 'streak_30', title: 'Dedicated', description: 'Reached a 30-day writing streak.', icon: 'Flame', unlocked: false },
-        { id: 'streak_100', title: 'Century Club', description: 'Reached a 100-day writing streak.', icon: 'Flame', unlocked: false },
-        
-        // Habits
-        { id: 'night_owl', title: 'Night Owl', description: 'Wrote something between 12 AM and 5 AM.', icon: 'Moon', unlocked: false },
-        { id: 'early_bird', title: 'Early Bird', description: 'Wrote something between 6 AM and 9 AM.', icon: 'Sun', unlocked: false },
-        { id: 'weekend_warrior', title: 'Weekend Warrior', description: 'Wrote on a Saturday or Sunday.', icon: 'Calendar', unlocked: false },
-        { id: 'speed_writer', title: 'Speed Writer', description: 'Wrote 500 words in one day.', icon: 'Wind', unlocked: false },
-        { id: 'marathon', title: 'Marathon', description: 'Wrote 2000 words in one day.', icon: 'TrendingUp', unlocked: false },
-        
-        // Collection
-        { id: 'notes_10', title: 'Collector', description: 'Created 10 notes.', icon: 'Files', unlocked: false },
-        { id: 'notes_50', title: 'Librarian', description: 'Created 50 notes.', icon: 'Files', unlocked: false },
-        { id: 'notes_100', title: 'Archivist', description: 'Created 100 notes.', icon: 'Files', unlocked: false },
-        { id: 'organizer', title: 'Organizer', description: 'Created 3 folders.', icon: 'Folder', unlocked: false },
-        
-        // Features
-        { id: 'goal_met', title: 'Goal Setter', description: 'Reached a word count goal.', icon: 'Target', unlocked: false },
-        { id: 'ai_assist', title: 'Co-Pilot', description: 'Used AI assistance.', icon: 'Zap', unlocked: false },
-        { id: 'inspiration_5', title: 'Inspired', description: 'Added 5 items to inspiration board.', icon: 'Lightbulb', unlocked: false },
-        { id: 'published_1', title: 'Publisher', description: 'Published a note.', icon: 'Globe', unlocked: false },
-        { id: 'zen_master', title: 'Zen Master', description: 'Used Focus Mode.', icon: 'Maximize', unlocked: false },
-        { id: 'socialite', title: 'Socialite', description: 'Used Social Preview.', icon: 'Eye', unlocked: false },
-        { id: 'visual_storyteller', title: 'Visual Storyteller', description: 'Inserted an image into a note.', icon: 'Image', unlocked: false },
-        { id: 'director', title: 'Director', description: 'Inserted a video into a note.', icon: 'Video', unlocked: false },
-        { id: 'structural_engineer', title: 'Engineer', description: 'Used a table in a note.', icon: 'Table', unlocked: false },
-        { id: 'typewriter', title: 'Typewriter', description: 'Used the Monospace font setting.', icon: 'Type', unlocked: false },
-        { id: 'editor_chief', title: 'Editor-in-Chief', description: 'Fixed grammar using AI.', icon: 'CheckCircle', unlocked: false },
-        { id: 'dark_side', title: 'Dark Side', description: 'Enabled Dark Mode.', icon: 'Moon', unlocked: false },
-    ];
-
-    return {
-        totalWordsWritten: realTotalWords,
-        currentStreak: realTotalWords > 0 ? 1 : 0,
-        maxStreak: realTotalWords > 0 ? 1 : 0,
-        lastWrittenDate: realTotalWords > 0 ? todayStr : null,
-        dailyHistory: history,
-        points: realTotalWords * 0.1,
-        achievements: achievements
-    };
 };
 
-const defaultEditorSettings: EditorSettings = {
-  fontFamily: 'serif',
-  fontSize: 'medium',
-  maxWidth: 'medium'
-};
+const defaultEditorSettings: EditorSettings = { fontFamily: 'serif', fontSize: 'medium', maxWidth: 'medium' };
 
-const App: React.FC = () => {
-  // Auth State
+const ToastContainer: React.FC<{ toasts: ToastMessage[] }> = ({ toasts }) => (
+    <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 pointer-events-none">
+        {toasts.map(t => (
+            <div key={t.id} className={`bg-white dark:bg-stone-900 border-l-4 p-4 rounded shadow-xl min-w-[300px] pointer-events-auto animate-fadeIn flex items-start gap-3 ${
+                t.type === 'success' ? 'border-green-500' : 
+                t.type === 'error' ? 'border-red-500' : 
+                t.type === 'achievement' ? 'border-yellow-500' : 'border-blue-500'
+            }`}>
+                {t.type === 'success' && <Check size={20} className="text-green-500 flex-shrink-0" />}
+                {t.type === 'error' && <AlertTriangle size={20} className="text-red-500 flex-shrink-0" />}
+                {t.type === 'achievement' && <Trophy size={20} className="text-yellow-500 flex-shrink-0" />}
+                {t.type === 'info' && <Globe size={20} className="text-blue-500 flex-shrink-0" />}
+                <div>
+                    <h4 className="font-bold text-sm text-ink-900 dark:text-stone-100">{t.title}</h4>
+                    <p className="text-xs text-stone-500 dark:text-stone-400">{t.description}</p>
+                </div>
+            </div>
+        ))}
+    </div>
+);
+
+const AppContent: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
       const stored = localStorage.getItem('zen_current_user');
       return stored ? JSON.parse(stored) : null;
   });
-
   const [users, setUsers] = useState<User[]>([]);
-
-  // App Data
   const [folders, setFolders] = useState<Folder[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
   const [inspirationItems, setInspirationItems] = useState<InspirationItem[]>([]);
-  const [userStats, setUserStats] = useState<UserStats>(getInitialStats());
-  const [dataLoaded, setDataLoaded] = useState(false); // Flag to prevent duplicate achievement toasts on load
-  
+  const [userStats, setUserStats] = useState<UserStats>(reconstructStats([]));
+  const [dataLoaded, setDataLoaded] = useState(false); 
   const [activeNoteId, setActiveNoteId] = useState<string | null>(null);
   const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
-  const [webhookUrl, setWebhookUrl] = useState<string>('');
-  
-  // UI State
   const [currentView, setCurrentView] = useState<ViewMode>('dashboard');
-  
-  // DEFAULT TO DARK MODE (Check logic: if 'zen_theme' is null, default to dark. If 'light', be light.)
   const [darkMode, setDarkMode] = useState<boolean>(() => {
       const saved = localStorage.getItem('zen_theme');
-      if (saved === 'light') return false;
-      return true; // Default to dark
+      return saved === 'light' ? false : true; 
   });
-
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [showSettings, setShowSettings] = useState(false);
-  
   const [editorSettings, setEditorSettings] = useState<EditorSettings>(defaultEditorSettings);
-  
-  // Popups & Toasts
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [noteToDelete, setNoteToDelete] = useState<string | null>(null);
-  
-  // Modals
   const [showCreateFolder, setShowCreateFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
-  
   const [showMoveNote, setShowMoveNote] = useState(false);
   const [noteToMoveId, setNoteToMoveId] = useState<string | null>(null);
-  
-  // Connectivity
   const [isOnline, setIsOnline] = useState(navigator.onLine);
-
-  // --- DATA LOADING & AUTH EFFECTS ---
   
+  // Database Config State
+  const [dbUrl, setDbUrl] = useState('');
+  const [dbKey, setDbKey] = useState('');
+  const [dbConnected, setDbConnected] = useState(isSupabaseConfigured());
+  const [isDbTesting, setIsDbTesting] = useState(false);
+
   useEffect(() => {
-    // Network listeners
-    const handleOnline = () => {
-        setIsOnline(true);
-        addToast('Back Online', 'Syncing your work...', 'success');
-        // Simulate sync completion
-        setTimeout(() => {
-            addToast('Synced', 'All changes saved to app.', 'success');
-        }, 1000);
-    };
-    const handleOffline = () => {
-        setIsOnline(false);
-        addToast('Offline Mode', 'You are offline. Work will be saved locally.', 'info');
-    };
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    return () => {
-        window.removeEventListener('online', handleOnline);
-        window.removeEventListener('offline', handleOffline);
-    };
+    const handleOnline = () => { setIsOnline(true); addToast('Back Online', 'Syncing your work...', 'success'); setTimeout(() => addToast('Synced', 'All changes saved.', 'success'), 1000); };
+    const handleOffline = () => { setIsOnline(false); addToast('Offline Mode', 'You are offline.', 'info'); };
+    window.addEventListener('online', handleOnline); window.addEventListener('offline', handleOffline);
+    return () => { window.removeEventListener('online', handleOnline); window.removeEventListener('offline', handleOffline); };
   }, []);
 
-  // Initialize Users (Seeding Admin)
   useEffect(() => {
       const storedUsers = localStorage.getItem('zen_users');
-      if (storedUsers) {
-          setUsers(JSON.parse(storedUsers));
-      } else {
-          // SEED ADMIN
-          const adminUser: User = {
-              name: 'Pedro',
-              email: 'pedro@beyond-views.com',
-              password: 'Nense123nense!',
-              isAdmin: true
-          };
-          setUsers([adminUser]);
-          localStorage.setItem('zen_users', JSON.stringify([adminUser]));
+      if (storedUsers) { setUsers(JSON.parse(storedUsers)); } 
+      else {
+          const adminUser: User = { name: 'Pedro', email: 'pedro@beyond-views.com', password: 'Nense123nense!', isAdmin: true };
+          setUsers([adminUser]); localStorage.setItem('zen_users', JSON.stringify([adminUser]));
       }
+      
+      // Init Settings inputs
+      setDbUrl(localStorage.getItem('zen_supabase_url') || '');
+      setDbKey(localStorage.getItem('zen_supabase_key') || '');
   }, []);
 
+  // --- DATA LOADING ---
   useEffect(() => {
-    if (currentUser) {
-        // Load user specific data
-        const prefix = `zen_${currentUser.email}`;
-        
-        const savedFolders = localStorage.getItem(`${prefix}_folders`);
-        setFolders(savedFolders ? JSON.parse(savedFolders) : getInitialFolders());
+    const loadData = async () => {
+        if (currentUser) {
+            const email = currentUser.email.toLowerCase();
+            const prefix = `zen_${email}`;
 
-        const savedNotes = localStorage.getItem(`${prefix}_notes`);
-        setNotes(savedNotes ? JSON.parse(savedNotes) : getInitialNotes());
+            try {
+                // Load folders and notes (Fail-safe: storage checks both cloud and local)
+                let loadedFolders = await storage.getFolders(email);
+                let loadedNotes = await storage.getNotes(email);
+                
+                // Seed default data if completely empty (First time user)
+                if (!loadedFolders || loadedFolders.length === 0) {
+                    loadedFolders = getInitialFolders();
+                    storage.saveFolders(loadedFolders, email); // Save immediately
+                }
+                
+                if (!loadedNotes || loadedNotes.length === 0) {
+                    loadedNotes = getInitialNotes();
+                    if (loadedNotes[0]) storage.saveNote(loadedNotes[0], email); // Save immediately
+                }
 
-        const savedInsp = localStorage.getItem(`${prefix}_inspiration`);
-        setInspirationItems(savedInsp ? JSON.parse(savedInsp) : getInitialInspiration());
+                setFolders(loadedFolders || []);
+                setNotes(loadedNotes || []);
 
-        const savedStats = localStorage.getItem(`${prefix}_stats`);
-        const initialStats = getInitialStats();
-        
-        if(savedStats) {
-            const loaded = JSON.parse(savedStats);
-            // Fix missing or empty history which causes empty graphs
-            let history = loaded.dailyHistory;
-            if (!history || history.length === 0) {
-                history = initialStats.dailyHistory;
+                const savedInsp = localStorage.getItem(`${prefix}_inspiration`);
+                const loadedInspiration = await storage.getInspiration(email) || (savedInsp ? JSON.parse(savedInsp) : getInitialInspiration());
+                setInspirationItems(loadedInspiration || []);
+                
+                const savedStats = localStorage.getItem(`${prefix}_stats`);
+                let loadedStats = savedStats ? JSON.parse(savedStats) : null;
+                if(!loadedStats) loadedStats = await storage.getStats(email);
+
+                if (loadedStats) {
+                    const reconstructed = reconstructStats(loadedNotes || [], loadedStats.achievements);
+                    setUserStats({ ...loadedStats, dailyHistory: reconstructed.dailyHistory, totalWordsWritten: reconstructed.totalWordsWritten, achievements: reconstructed.achievements });
+                } else { 
+                    setUserStats(reconstructStats(loadedNotes || [])); 
+                }
+
+                const savedSettings = localStorage.getItem(`${prefix}_editor_settings`);
+                setEditorSettings(savedSettings ? JSON.parse(savedSettings) : defaultEditorSettings);
+                
+                setTimeout(() => setDataLoaded(true), 500);
+            } catch (err) {
+                console.error("Critical load failure", err);
+                // Fallback to defaults to prevent white screen
+                setFolders(getInitialFolders());
+                setNotes(getInitialNotes());
+                setDataLoaded(true);
+                addToast("Data Load Error", "Could not load cloud data. Falling back to local defaults.", "error");
             }
-            // Merge achievements
-             const mergedAchievements = initialStats.achievements.map(a => {
-                const found = loaded.achievements.find((la: Achievement) => la.id === a.id);
-                return found ? found : a;
-            });
-
-            setUserStats({ 
-                ...loaded, 
-                achievements: mergedAchievements,
-                dailyHistory: history
-            });
-        } else {
-            setUserStats(initialStats);
         }
+    };
+    loadData();
+  }, [currentUser, dbConnected]);
 
-        setWebhookUrl(localStorage.getItem(`${prefix}_webhook`) || '');
-        
-        const savedSettings = localStorage.getItem(`${prefix}_editor_settings`);
-        setEditorSettings(savedSettings ? JSON.parse(savedSettings) : defaultEditorSettings);
-        
-        setDataLoaded(true);
-    }
-  }, [currentUser]);
-
-  // Persist Data on Change
-  useEffect(() => {
-    if (!currentUser) return;
-    const prefix = `zen_${currentUser.email}`;
-    localStorage.setItem(`${prefix}_folders`, JSON.stringify(folders));
-  }, [folders, currentUser]);
+  // --- SAVE EFFECTS ---
+  useEffect(() => { if (currentUser) storage.saveFolders(folders, currentUser.email); }, [folders, currentUser]);
+  useEffect(() => { if (currentUser) storage.saveInspiration(inspirationItems, currentUser.email); }, [inspirationItems, currentUser]);
+  useEffect(() => { if (currentUser) storage.saveStats(userStats, currentUser.email); }, [userStats, currentUser]);
+  useEffect(() => { if (currentUser) localStorage.setItem(`zen_${currentUser.email.toLowerCase()}_editor_settings`, JSON.stringify(editorSettings)); }, [editorSettings, currentUser]);
 
   useEffect(() => {
-    if (!currentUser) return;
-    const prefix = `zen_${currentUser.email}`;
-    localStorage.setItem(`${prefix}_notes`, JSON.stringify(notes));
-  }, [notes, currentUser]);
-
-  useEffect(() => {
-    if (!currentUser) return;
-    const prefix = `zen_${currentUser.email}`;
-    localStorage.setItem(`${prefix}_inspiration`, JSON.stringify(inspirationItems));
-  }, [inspirationItems, currentUser]);
-
-  useEffect(() => {
-    if (!currentUser) return;
-    const prefix = `zen_${currentUser.email}`;
-    localStorage.setItem(`${prefix}_stats`, JSON.stringify(userStats));
-  }, [userStats, currentUser]);
-
-  useEffect(() => {
-      if (!currentUser) return;
-      const prefix = `zen_${currentUser.email}`;
-      localStorage.setItem(`${prefix}_webhook`, webhookUrl);
-  }, [webhookUrl, currentUser]);
-
-  useEffect(() => {
-      if (!currentUser) return;
-      const prefix = `zen_${currentUser.email}`;
-      localStorage.setItem(`${prefix}_editor_settings`, JSON.stringify(editorSettings));
-  }, [editorSettings, currentUser]);
-
-  // Check achievements when settings change, ONLY if data is loaded
-  useEffect(() => {
-    if (dataLoaded && editorSettings.fontFamily === 'mono') {
-        const isUnlocked = userStats.achievements.find(a => a.id === 'typewriter')?.unlocked;
-        if (!isUnlocked) unlockAchievement('typewriter');
-    }
+    if (dataLoaded && editorSettings.fontFamily === 'mono') unlockAchievement('typewriter');
   }, [editorSettings, dataLoaded]);
 
   useEffect(() => {
-      if (darkMode) {
-        document.documentElement.classList.add('dark');
-        localStorage.setItem('zen_theme', 'dark');
-        if (dataLoaded) {
-             const isUnlocked = userStats.achievements.find(a => a.id === 'dark_side')?.unlocked;
-             if (!isUnlocked) unlockAchievement('dark_side');
-        }
-      } else {
-        document.documentElement.classList.remove('dark');
-        localStorage.setItem('zen_theme', 'light');
-      }
+      if (darkMode) { document.documentElement.classList.add('dark'); localStorage.setItem('zen_theme', 'dark'); if (dataLoaded) unlockAchievement('dark_side'); } 
+      else { document.documentElement.classList.remove('dark'); localStorage.setItem('zen_theme', 'light'); if (dataLoaded) unlockAchievement('light_side'); }
   }, [darkMode, dataLoaded]);
 
-  // General UI Effects
-  useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth < 768);
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-
-  // --- HANDLERS ---
-
   const addToast = (title: string, description: string, type: ToastMessage['type'] = 'info') => {
-      const id = Date.now().toString();
-      setToasts(prev => [...prev, { id, title, description, type }]);
-      setTimeout(() => {
-          setToasts(prev => prev.filter(t => t.id !== id));
-      }, 5000);
+      const id = Date.now().toString(); setToasts(prev => [...prev, { id, title, description, type }]); setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 5000);
   };
 
   const unlockAchievement = (id: string) => {
+      if(!dataLoaded) return;
       setUserStats(prev => {
           const achievement = prev.achievements.find(a => a.id === id);
           if (achievement && !achievement.unlocked) {
               addToast('Achievement Unlocked!', achievement.title, 'achievement');
-              return {
-                  ...prev,
-                  achievements: prev.achievements.map(a => a.id === id ? { ...a, unlocked: true, unlockedAt: Date.now() } : a)
-              };
+              return { ...prev, achievements: prev.achievements.map(a => a.id === id ? { ...a, unlocked: true, unlockedAt: Date.now() } : a) };
           }
           return prev;
       });
   };
 
-  // User Management
-  const handleAddUser = (newUser: User) => {
-      const updatedUsers = [...users, newUser];
-      setUsers(updatedUsers);
-      localStorage.setItem('zen_users', JSON.stringify(updatedUsers));
-      addToast('User Created', `${newUser.name} has been added to the system.`, 'success');
+  const handleLogin = (user: User) => { 
+      const normalizedUser = { ...user, email: user.email.toLowerCase() };
+      localStorage.setItem('zen_current_user', JSON.stringify(normalizedUser)); 
+      setCurrentUser(normalizedUser); 
+      addToast(`Welcome back, ${user.name}`, 'Your desk is ready.', 'info'); 
+      setCurrentView('dashboard'); 
   };
-
-  const handleDeleteUser = (email: string) => {
-      const updatedUsers = users.filter(u => u.email !== email);
-      setUsers(updatedUsers);
-      localStorage.setItem('zen_users', JSON.stringify(updatedUsers));
-      addToast('User Removed', `Access revoked for ${email}`, 'info');
-  };
-
-  const handleLogin = (user: User) => {
-      localStorage.setItem('zen_current_user', JSON.stringify(user));
-      setCurrentUser(user);
-      addToast(`Welcome back, ${user.name}`, 'Your desk is ready.', 'info');
-      setCurrentView('dashboard');
-  };
-
-  const handleLogout = () => {
-      localStorage.removeItem('zen_current_user');
-      setCurrentUser(null);
-      setDataLoaded(false);
-      setFolders([]);
-      setNotes([]);
-      setInspirationItems([]);
-      setCurrentView('dashboard');
-  };
-
-  const handleCreateFolderClick = () => {
-      setNewFolderName('');
-      setShowCreateFolder(true);
-  };
-
+  
+  const handleLogout = () => { localStorage.removeItem('zen_current_user'); setCurrentUser(null); setDataLoaded(false); setFolders([]); setNotes([]); setInspirationItems([]); setCurrentView('dashboard'); };
+  
+  const handleCreateFolderClick = () => { setNewFolderName(''); setShowCreateFolder(true); };
   const confirmCreateFolder = (e: React.FormEvent) => {
       e.preventDefault();
       if (newFolderName.trim()) {
-          setFolders([...folders, { id: `f-${Date.now()}`, name: newFolderName, color: '#78716c' }]);
-          addToast('Folder Created', `Folder "${newFolderName}" added to sidebar.`, 'success');
-          setShowCreateFolder(false);
-          if (folders.length + 1 >= 3) unlockAchievement('organizer');
+          setFolders(prev => [...prev, { id: `f-${Date.now()}`, name: newFolderName, color: '#78716c' }]);
+          addToast('Folder Created', `"${newFolderName}" added.`, 'success'); setShowCreateFolder(false); if (folders.length + 1 >= 3) unlockAchievement('organizer');
       }
   };
-  
-  const handleUpdateFolder = (folderId: string, name: string, color?: string) => {
-      setFolders(folders.map(f => f.id === folderId ? { ...f, name, color } : f));
-  };
-  
-  const handleReorderFolders = (fromIndex: number, toIndex: number) => {
-      if (toIndex < 0 || toIndex >= folders.length) return;
-      const newFolders = [...folders];
-      const [moved] = newFolders.splice(fromIndex, 1);
-      newFolders.splice(toIndex, 0, moved);
-      setFolders(newFolders);
-  };
+  const handleUpdateFolder = (id: string, name: string, color?: string) => setFolders(prev => prev.map(f => f.id === id ? { ...f, name, color } : f));
+  const handleReorderFolders = (from: number, to: number) => { if (to < 0 || to >= folders.length) return; setFolders(prev => { const n = [...prev]; const [moved] = n.splice(from, 1); n.splice(to, 0, moved); return n; }); };
 
   const handleCreateNote = (folderId: string | null = null, templateId?: string) => {
-    let targetFolderId = folderId;
+    let targetFolderId = folderId || (folders.length > 0 ? folders[0].id : null);
     if (!targetFolderId) {
-        if (folders.length === 0) {
-            const newId = `f-${Date.now()}`;
-            setFolders([{ id: newId, name: 'Drafts' }]);
-            targetFolderId = newId;
-        } else {
-            targetFolderId = folders[0].id;
-        }
+        const newId = `f-${Date.now()}`;
+        setFolders(prev => [...prev, { id: newId, name: 'Drafts', color: '#78716c' }]);
+        targetFolderId = newId;
     }
-
     const template = TEMPLATES.find(t => t.id === templateId);
-
+    if (templateId === 'script') unlockAchievement('scriptwriter');
+    
     const newNote: Note = {
       id: `n-${Date.now()}`,
       folderId: targetFolderId,
@@ -522,552 +443,229 @@ const App: React.FC = () => {
       content: template?.content || '',
       updatedAt: Date.now(),
     };
-    setNotes([newNote, ...notes]);
+    
+    setNotes(prev => {
+        const updated = [newNote, ...prev];
+        if (updated.length >= 5) unlockAchievement('notes_5');
+        if (updated.length >= 10) unlockAchievement('notes_10');
+        if (updated.length >= 25) unlockAchievement('notes_25');
+        return updated;
+    });
+
+    if (currentUser) {
+        storage.saveNote(newNote, currentUser.email);
+    }
+
     setActiveNoteId(newNote.id);
     setCurrentView('editor');
     if (isMobile) setSidebarOpen(false);
-    
-    // Check note count achievements
-    const noteCount = notes.length + 1;
-    if (noteCount >= 10) unlockAchievement('notes_10');
-    if (noteCount >= 50) unlockAchievement('notes_50');
-    if (noteCount >= 100) unlockAchievement('notes_100');
   };
 
-  // Delete Handlers
-  const handleDeleteNote = (id: string) => {
-    setNoteToDelete(id);
-  };
-
+  const handleDeleteNote = (id: string) => setNoteToDelete(id);
   const confirmDeleteNote = () => {
       if (noteToDelete) {
-          setNotes(notes.filter(n => n.id !== noteToDelete));
-          if (activeNoteId === noteToDelete) {
-              setActiveNoteId(null);
-              setCurrentView('dashboard');
-          }
-          addToast('Note Deleted', 'The note has been permanently removed.', 'info');
+          setNotes(prev => prev.filter(n => n.id !== noteToDelete));
+          if (currentUser) storage.deleteNote(noteToDelete, currentUser.email);
+          if (activeNoteId === noteToDelete) { setActiveNoteId(null); setCurrentView('dashboard'); }
+          addToast('Note Deleted', 'Permanently removed.', 'info');
       }
       setNoteToDelete(null);
   };
 
-  // Move Note Handlers
-  const handleMoveNoteClick = (noteId: string) => {
-      setNoteToMoveId(noteId);
-      setShowMoveNote(true);
-  };
-
-  const confirmMoveNote = (targetFolderId: string) => {
+  const handleMoveNoteClick = (id: string) => { setNoteToMoveId(id); setShowMoveNote(true); };
+  const confirmMoveNote = (folderId: string) => {
       if (noteToMoveId) {
-          setNotes(notes.map(n => n.id === noteToMoveId ? { ...n, folderId: targetFolderId } : n));
-          const folderName = folders.find(f => f.id === targetFolderId)?.name;
-          addToast('Note Moved', `Moved to ${folderName}`, 'success');
-          setShowMoveNote(false);
-          setNoteToMoveId(null);
+          setNotes(prev => {
+              const updated = prev.map(n => n.id === noteToMoveId ? { ...n, folderId } : n);
+              const modified = updated.find(n => n.id === noteToMoveId);
+              if (modified && currentUser) storage.saveNote(modified, currentUser.email);
+              return updated;
+          });
+          addToast('Note Moved', 'Success.', 'success'); setShowMoveNote(false); setNoteToMoveId(null);
       }
   };
 
-  const getTodayStr = () => {
-      const today = new Date();
-      const yyyy = today.getFullYear();
-      const mm = String(today.getMonth() + 1).padStart(2, '0');
-      const dd = String(today.getDate()).padStart(2, '0');
-      return `${yyyy}-${mm}-${dd}`;
-  }
-
   const handleUpdateNote = (id: string, content: string, title: string, targetWordCount?: number) => {
-    const oldNote = notes.find(n => n.id === id);
-    if (!oldNote) return;
+    setNotes(prevNotes => {
+        const idx = prevNotes.findIndex(n => n.id === id);
+        if (idx === -1) return prevNotes;
+        
+        const oldNote = prevNotes[idx];
+        const updatedNote = { ...oldNote, content, title, updatedAt: Date.now(), targetWordCount };
+        
+        if (currentUser) {
+            storage.saveNote(updatedNote, currentUser.email);
+        }
 
-    // Feature Detection for Achievements (Only check if changed)
-    if (content !== oldNote.content) {
-        if (!content.includes('<img') && content.includes('<img')) unlockAchievement('visual_storyteller');
-        if (!content.includes('<iframe') && content.includes('<iframe')) unlockAchievement('director');
-        if (!content.includes('<table') && content.includes('<table')) unlockAchievement('structural_engineer');
-    }
-
-    const updatedNote = { ...oldNote, content, title, updatedAt: Date.now(), targetWordCount };
-    setNotes(notes.map(n => n.id === id ? updatedNote : n));
-
-    const oldWords = countWordsSimple(oldNote.content);
-    const newWords = countWordsSimple(content);
-    const diff = newWords - oldWords;
-
-    if (diff > 0) {
-        updateGamification(diff);
-    }
+        const oldWords = countWordsSimple(oldNote.content);
+        const newWords = countWordsSimple(content);
+        const diff = newWords - oldWords;
+        
+        if (diff > 0) setTimeout(() => updateGamification(diff), 0);
+        if (content.includes('<img') && !oldNote.content.includes('<img')) setTimeout(() => unlockAchievement('visual_storyteller'), 0);
+        
+        const newNotes = [...prevNotes];
+        newNotes[idx] = updatedNote;
+        return newNotes;
+    });
   };
 
   const updateGamification = (wordsAdded: number) => {
-      const todayStr = getTodayStr();
-      const hour = new Date().getHours();
-      const dayOfWeek = new Date().getDay();
-
+      const todayStr = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`;
       setUserStats(prev => {
           const newTotal = prev.totalWordsWritten + wordsAdded;
-          const newPoints = prev.points + (wordsAdded * 0.1); 
+          const history = [...(prev.dailyHistory || [])];
+          const todayIdx = history.findIndex(h => h.date === todayStr);
+          if (todayIdx >= 0) history[todayIdx] = { ...history[todayIdx], wordCount: history[todayIdx].wordCount + wordsAdded };
+          else { history.push({ date: todayStr, wordCount: wordsAdded }); if (history.length > 30) history.shift(); }
           
-          let history = [...(prev.dailyHistory || [])];
-          const todayStatIndex = history.findIndex(h => h.date === todayStr);
-          let todayCount = wordsAdded;
-          
-          if (todayStatIndex >= 0) {
-              history[todayStatIndex] = { 
-                  ...history[todayStatIndex], 
-                  wordCount: history[todayStatIndex].wordCount + wordsAdded 
-              };
-              todayCount = history[todayStatIndex].wordCount;
-          } else {
-              history.push({ date: todayStr, wordCount: wordsAdded });
-              // Keep only last 30 days max to prevent bloat
-              if (history.length > 30) history.shift();
-          }
-
-          let streak = prev.currentStreak;
-          if (prev.lastWrittenDate !== todayStr) {
-              const yesterday = new Date();
-              yesterday.setDate(yesterday.getDate() - 1);
-              const yY = yesterday.getFullYear();
-              const yM = String(yesterday.getMonth() + 1).padStart(2, '0');
-              const yD = String(yesterday.getDate()).padStart(2, '0');
-              const yesterdayStr = `${yY}-${yM}-${yD}`;
-
-              if (prev.lastWrittenDate === yesterdayStr) {
-                  streak += 1;
-              } else {
-                  streak = 1; 
-              }
-          }
-
-          const newState = {
-              ...prev,
-              totalWordsWritten: newTotal,
-              points: newPoints,
-              currentStreak: streak,
-              maxStreak: Math.max(streak, prev.maxStreak),
-              lastWrittenDate: todayStr,
-              dailyHistory: history,
-          };
-          
-          // Separate achievement checking to avoid duplicate toasts
-          checkAchievements(newState, todayCount, hour, dayOfWeek);
-          
-          return newState;
+          return { ...prev, totalWordsWritten: newTotal, dailyHistory: history, points: prev.points + (wordsAdded * 0.1) };
       });
   };
+
+  const handleUpdateInspiration = (item: InspirationItem) => setInspirationItems(prev => {
+      const idx = prev.findIndex(i => i.id === item.id);
+      return idx >= 0 ? prev.map(i => i.id === item.id ? item : i) : [item, ...prev];
+  });
   
-  const checkAchievements = (stats: UserStats, todayCount: number, hour: number, dayOfWeek: number) => {
-      const newUnlocked: string[] = [];
-      const streak = stats.currentStreak;
-      const total = stats.totalWordsWritten;
-
-      if (streak >= 3) newUnlocked.push('streak_3');
-      if (streak >= 7) newUnlocked.push('streak_7');
-      if (streak >= 30) newUnlocked.push('streak_30');
-      if (streak >= 100) newUnlocked.push('streak_100');
+  const handleSaveHighlight = (text: string) => {
+     setInspirationItems(prev => [{ id: `i-${Date.now()}`, type: 'highlight', content: text, title: activeNote ? activeNote.title : 'Highlight', snippet: `From note: ${activeNote ? activeNote.title : 'Untitled'}`, createdAt: Date.now(), x: 100, y: 100 }, ...prev]);
+     addToast('Highlight Saved', 'Added to Inspiration Board.', 'success');
+     unlockAchievement('highlighter');
+     unlockAchievement('researcher');
+  };
+  const handleAddUser = (user: User) => { const u = [...users, user]; setUsers(u); localStorage.setItem('zen_users', JSON.stringify(u)); addToast('User Added', `Welcome ${user.name}`, 'success'); };
+  const handleDeleteUser = (email: string) => { const u = users.filter(x => x.email !== email); setUsers(u); localStorage.setItem('zen_users', JSON.stringify(u)); addToast('User Removed', email, 'info'); };
+  
+  const handleSaveDbConfig = async (e: React.FormEvent) => {
+      e.preventDefault();
+      setIsDbTesting(true);
       
-      if (total >= 1000) newUnlocked.push('words_1000');
-      if (total >= 10000) newUnlocked.push('words_10000');
-      if (total >= 50000) newUnlocked.push('words_50000');
-      if (total >= 100000) newUnlocked.push('words_100000');
+      saveSupabaseConfig(dbUrl, dbKey);
       
-      if (hour >= 0 && hour < 5) newUnlocked.push('night_owl');
-      if (hour >= 6 && hour < 9) newUnlocked.push('early_bird');
-      if (dayOfWeek === 0 || dayOfWeek === 6) newUnlocked.push('weekend_warrior');
+      const success = await testSupabaseConnection();
+      setIsDbTesting(false);
       
-      if (todayCount >= 500) newUnlocked.push('speed_writer');
-      if (todayCount >= 2000) newUnlocked.push('marathon');
+      if (success) {
+          setDbConnected(true);
+          addToast("Database Connected", "Restarting to sync...", "success");
+          setTimeout(() => window.location.reload(), 1000);
+      } else {
+          clearSupabaseConfig();
+          setDbConnected(false);
+          addToast("Connection Failed", "Check your URL and Anon Key.", "error");
+      }
+  };
 
-      // Update state if new unlocks
-      setUserStats(current => {
-          let changed = false;
-          const updatedAchievements = current.achievements.map(a => {
-              if (newUnlocked.includes(a.id) && !a.unlocked) {
-                  changed = true;
-                  addToast('Achievement Unlocked!', a.title, 'achievement');
-                  return { ...a, unlocked: true, unlockedAt: Date.now() };
-              }
-              return a;
-          });
-
-          return changed ? { ...current, achievements: updatedAchievements } : current;
-      });
-  }
-
-  const handleUpdateInspiration = (item: InspirationItem) => {
-    setInspirationItems(prev => {
-        const idx = prev.findIndex(i => i.id === item.id);
-        const newItems = idx >= 0 ? [...prev] : [...prev, item];
-        if (idx >= 0) newItems[idx] = item;
-        
-        if (newItems.length >= 5) unlockAchievement('inspiration_5');
-        return newItems;
-    });
+  const handleDisconnectDb = () => {
+      clearSupabaseConfig();
+      setDbUrl('');
+      setDbKey('');
+      setDbConnected(false);
+      addToast("Database Disconnected", "Switched to local storage.", "info");
+      setTimeout(() => window.location.reload(), 1000);
   };
 
   const activeNote = notes.find(n => n.id === activeNoteId);
   const activeFolder = folders.find(f => f.id === activeFolderId);
 
-  // --- RENDER ---
-
-  if (!currentUser) {
-      return (
-        <>
-            <ToastContainer toasts={toasts} />
-            <LoginPage onLogin={handleLogin} users={users} />
-        </>
-      );
-  }
+  if (!currentUser) return <><ToastContainer toasts={toasts} /><LoginPage onLogin={handleLogin} users={users} /></>;
 
   return (
     <div className="flex h-screen w-full overflow-hidden font-sans bg-paper-50 dark:bg-stone-950 transition-colors">
-      
-      {/* Global Toast Container */}
       <ToastContainer toasts={toasts} />
-
-      <Sidebar 
-        user={currentUser}
-        folders={folders}
-        notes={notes}
-        activeNoteId={activeNoteId}
-        activeFolderId={activeFolderId}
-        currentView={currentView}
-        darkMode={darkMode}
-        isMobile={isMobile}
-        isOpen={sidebarOpen}
-        onSelectNote={(id) => { setActiveNoteId(id); setCurrentView('editor'); }}
-        onSelectFolder={(id) => { setActiveFolderId(id); setCurrentView('folder'); }}
-        onCreateFolder={handleCreateFolderClick}
-        onUpdateFolder={handleUpdateFolder}
-        onReorderFolder={handleReorderFolders}
-        onCreateNote={handleCreateNote}
-        onDeleteNote={handleDeleteNote}
-        onMoveNote={handleMoveNoteClick}
-        onOpenSettings={() => setShowSettings(true)}
-        onChangeView={setCurrentView}
-        onToggleTheme={() => setDarkMode(!darkMode)}
-        onCloseMobile={() => setSidebarOpen(false)}
-        onLogout={handleLogout}
-        templates={TEMPLATES}
-      />
-
+      <Sidebar user={currentUser} folders={folders} notes={notes} activeNoteId={activeNoteId} activeFolderId={activeFolderId} currentView={currentView} darkMode={darkMode} isMobile={isMobile} isOpen={sidebarOpen} onSelectNote={(id) => { setActiveNoteId(id); setCurrentView('editor'); }} onSelectFolder={(id) => { setActiveFolderId(id); setCurrentView('folder'); }} onCreateFolder={handleCreateFolderClick} onUpdateFolder={handleUpdateFolder} onReorderFolder={handleReorderFolders} onCreateNote={handleCreateNote} onDeleteNote={handleDeleteNote} onMoveNote={handleMoveNoteClick} onOpenSettings={() => setShowSettings(true)} onChangeView={setCurrentView} onToggleTheme={() => setDarkMode(!darkMode)} onCloseMobile={() => setSidebarOpen(false)} onLogout={handleLogout} templates={TEMPLATES} />
       <main className="flex-1 flex flex-col h-full overflow-hidden relative">
-        {currentView === 'dashboard' && (
-            <Dashboard 
-                notes={notes}
-                stats={userStats} 
-                onToggleSidebar={() => setSidebarOpen(true)}
-                onNavigateToNote={(id) => { setActiveNoteId(id); setCurrentView('editor'); }}
-            />
-        )}
-
-        {currentView === 'inspiration' && (
-             <InspirationBoard 
-                items={inspirationItems}
-                onAddItem={(item) => setInspirationItems([item, ...inspirationItems])}
-                onUpdateItem={handleUpdateInspiration}
-                onDeleteItem={(id) => setInspirationItems(inspirationItems.filter(i => i.id !== id))}
-                onToggleSidebar={() => setSidebarOpen(true)}
-             />
-        )}
-
-        {currentView === 'folder' && activeFolder && (
-            <FolderView 
-                folder={activeFolder}
-                notes={notes.filter(n => n.folderId === activeFolder.id)}
-                onSelectNote={(id) => { setActiveNoteId(id); setCurrentView('editor'); }}
-                onToggleSidebar={() => setSidebarOpen(true)}
-            />
-        )}
-
-        {currentView === 'admin' && currentUser.isAdmin && (
-             <AdminPanel 
-                 users={users}
-                 onAddUser={handleAddUser}
-                 onDeleteUser={handleDeleteUser}
-                 currentUserEmail={currentUser.email}
-                 onToggleSidebar={() => setSidebarOpen(true)}
-             />
-        )}
-
+        {currentView === 'dashboard' && <Dashboard notes={notes} stats={userStats} onToggleSidebar={() => setSidebarOpen(true)} onNavigateToNote={(id) => { setActiveNoteId(id); setCurrentView('editor'); }} />}
+        {currentView === 'inspiration' && <InspirationBoard items={inspirationItems} onAddItem={(item) => { setInspirationItems([item, ...inspirationItems]); unlockAchievement('researcher'); if(inspirationItems.length + 1 >= 10) unlockAchievement('muse'); }} onUpdateItem={handleUpdateInspiration} onDeleteItem={(id) => setInspirationItems(inspirationItems.filter(i => i.id !== id))} onToggleSidebar={() => setSidebarOpen(true)} />}
+        {currentView === 'folder' && activeFolder && <FolderView folder={activeFolder} notes={notes.filter(n => n.folderId === activeFolder.id)} onSelectNote={(id) => { setActiveNoteId(id); setCurrentView('editor'); }} onToggleSidebar={() => setSidebarOpen(true)} />}
+        {currentView === 'admin' && currentUser.isAdmin && <AdminPanel users={users} onAddUser={handleAddUser} onDeleteUser={handleDeleteUser} currentUserEmail={currentUser.email} onToggleSidebar={() => setSidebarOpen(true)} />}
         {currentView === 'editor' && (
              activeNote ? (
-              <>
-                <div className="flex-1 overflow-y-auto bg-paper-50 dark:bg-stone-950">
-                   <RichEditor 
-                      note={activeNote} 
-                      onUpdate={handleUpdateNote} 
-                      allNotes={notes}
-                      onToggleSidebar={() => setSidebarOpen(true)}
-                      editorSettings={editorSettings}
-                   />
-                </div>
-              </>
-            ) : (
-                <div className="flex flex-col items-center justify-center h-full text-stone-400">
-                    <p className="font-serif">Select a note to begin.</p>
-                </div>
-            )
+              <div className="flex-1 overflow-y-auto bg-paper-50 dark:bg-stone-950">
+                   <RichEditor key={activeNote.id} note={activeNote} onUpdate={handleUpdateNote} onSaveHighlight={handleSaveHighlight} allNotes={notes} onToggleSidebar={() => setSidebarOpen(true)} editorSettings={editorSettings} />
+              </div>
+            ) : <div className="flex items-center justify-center h-full text-stone-400 font-serif">Select a note to begin.</div>
         )}
       </main>
-
-      {/* Delete Modal */}
-      {noteToDelete && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center backdrop-blur-sm p-4 animate-fadeIn">
-            <div className="bg-white dark:bg-stone-900 rounded-lg shadow-xl w-full max-w-sm border border-stone-200 dark:border-stone-800 p-6 text-center">
-                 <div className="w-12 h-12 bg-red-100 dark:bg-red-900/20 rounded-full flex items-center justify-center mx-auto mb-4 text-red-600 dark:text-red-400">
-                     <AlertTriangle size={24} />
-                 </div>
-                 <h3 className="text-lg font-bold font-serif text-ink-900 dark:text-stone-100 mb-2">Delete Note?</h3>
-                 <p className="text-stone-500 text-sm mb-6">This action cannot be undone. Are you sure you want to discard this piece of writing?</p>
-                 <div className="flex gap-3 justify-center">
-                     <button 
-                        onClick={() => setNoteToDelete(null)}
-                        className="px-4 py-2 bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 rounded font-medium hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors"
-                     >
-                         Cancel
-                     </button>
-                     <button 
-                        onClick={confirmDeleteNote}
-                        className="px-4 py-2 bg-red-600 text-white rounded font-medium hover:bg-red-700 transition-colors shadow-lg"
-                     >
-                         Delete
-                     </button>
-                 </div>
-            </div>
-        </div>
-      )}
-
-      {/* Create Folder Modal */}
+      
+      {/* MODALS */}
       {showCreateFolder && (
           <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center backdrop-blur-sm p-4 animate-fadeIn">
               <div className="bg-white dark:bg-stone-900 rounded-lg shadow-xl w-full max-w-sm border border-stone-200 dark:border-stone-800 p-6">
-                  <h3 className="text-lg font-bold font-serif text-ink-900 dark:text-stone-100 mb-4 flex items-center gap-2">
-                      <FolderPlus size={20} />
-                      New Folder
-                  </h3>
+                  <h3 className="text-lg font-bold font-serif text-ink-900 dark:text-stone-100 mb-4 flex items-center gap-2"><FolderPlus size={20} />New Folder</h3>
                   <form onSubmit={confirmCreateFolder}>
-                      <input 
-                          type="text" 
-                          autoFocus
-                          value={newFolderName}
-                          onChange={(e) => setNewFolderName(e.target.value)}
-                          placeholder="e.g., Short Stories"
-                          className="w-full bg-paper-50 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 rounded p-2 mb-4 text-ink-900 dark:text-stone-100 outline-none focus:ring-2 focus:ring-stone-500 font-serif"
-                      />
-                      <div className="flex gap-3 justify-end">
-                        <button 
-                            type="button"
-                            onClick={() => setShowCreateFolder(false)}
-                            className="px-4 py-2 bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 rounded font-medium hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors text-sm"
-                        >
-                            Cancel
-                        </button>
-                        <button 
-                            type="submit"
-                            disabled={!newFolderName.trim()}
-                            className="px-4 py-2 bg-ink-900 text-white dark:bg-stone-100 dark:text-stone-900 rounded font-medium hover:opacity-90 transition-colors text-sm disabled:opacity-50"
-                        >
-                            Create
-                        </button>
-                    </div>
+                      <input autoFocus value={newFolderName} onChange={(e) => setNewFolderName(e.target.value)} className="w-full bg-paper-50 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 rounded p-2 mb-4 text-ink-900 dark:text-stone-100 outline-none" />
+                      <div className="flex gap-3 justify-end"><button type="button" onClick={() => setShowCreateFolder(false)} className="px-4 py-2 bg-stone-100 dark:bg-stone-800 rounded">Cancel</button><button type="submit" className="px-4 py-2 bg-ink-900 text-white rounded">Create</button></div>
                   </form>
               </div>
           </div>
       )}
+      {noteToDelete && <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center"><div className="bg-white dark:bg-stone-900 p-6 rounded-lg max-w-sm"><h3 className="font-bold mb-2 text-ink-900 dark:text-stone-100">Delete Note?</h3><div className="flex gap-2 justify-end"><button onClick={() => setNoteToDelete(null)} className="px-4 py-2 bg-stone-100 dark:bg-stone-800 rounded">Cancel</button><button onClick={confirmDeleteNote} className="px-4 py-2 bg-red-600 text-white rounded">Delete</button></div></div></div>}
+      {showMoveNote && noteToMoveId && <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center"><div className="bg-white dark:bg-stone-900 p-6 rounded-lg max-w-sm w-full"><h3 className="font-bold mb-4 text-ink-900 dark:text-stone-100">Move Note</h3><div className="space-y-1 mb-4">{folders.map(f => <button key={f.id} onClick={() => confirmMoveNote(f.id)} className="w-full text-left p-2 hover:bg-stone-100 dark:hover:bg-stone-800 rounded">{f.name}</button>)}</div><button onClick={() => setShowMoveNote(false)} className="w-full bg-stone-100 dark:bg-stone-800 py-2 rounded">Cancel</button></div></div>}
+      
+      {showSettings && (
+          <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center">
+              <div className="bg-white dark:bg-stone-900 p-6 rounded-lg max-w-lg w-full border border-stone-200 dark:border-stone-800 overflow-y-auto max-h-[90vh]">
+                  <h2 className="font-bold text-xl mb-4 text-ink-900 dark:text-stone-100">Settings</h2>
+                  
+                  {/* Database Connection */}
+                  <div className="mb-6 p-4 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-lg">
+                      <div className="flex items-center justify-between mb-3">
+                          <h3 className="font-bold text-ink-900 dark:text-stone-100 flex items-center gap-2"><Database size={16}/> Database Connection</h3>
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-bold uppercase ${dbConnected ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-stone-200 text-stone-500'}`}>
+                              {dbConnected ? 'Connected' : 'Local Only'}
+                          </span>
+                      </div>
+                      
+                      {!dbConnected ? (
+                          <form onSubmit={handleSaveDbConfig} className="space-y-3">
+                              <div>
+                                  <label className="block text-xs font-bold text-stone-500 uppercase mb-1">Supabase URL</label>
+                                  <input value={dbUrl} onChange={e => setDbUrl(e.target.value)} className="w-full text-xs p-2 bg-white dark:bg-stone-900 border rounded text-ink-900 dark:text-stone-100" placeholder="https://xyz.supabase.co" required />
+                              </div>
+                              <div>
+                                  <label className="block text-xs font-bold text-stone-500 uppercase mb-1">Project API Key (anon/public)</label>
+                                  <input value={dbKey} onChange={e => setDbKey(e.target.value)} type="password" className="w-full text-xs p-2 bg-white dark:bg-stone-900 border rounded text-ink-900 dark:text-stone-100" placeholder="eyJ..." required />
+                                  <p className="text-[10px] text-stone-400">Find this in Supabase &#62; Project Settings &#62; API. Use the 'anon' public key.</p>
+                              </div>
+                              <button type="submit" disabled={isDbTesting} className="w-full bg-ink-900 text-white py-2 rounded text-xs font-bold mt-2 disabled:opacity-50">
+                                  {isDbTesting ? 'Testing Connection...' : 'Connect Database'}
+                              </button>
+                          </form>
+                      ) : (
+                          <div className="space-y-3">
+                              <div className="text-xs text-stone-500">Your notes are synced to the cloud.</div>
+                              <button onClick={handleDisconnectDb} className="w-full bg-red-100 text-red-600 dark:bg-red-900/20 dark:text-red-400 py-2 rounded text-xs font-bold">Disconnect</button>
+                          </div>
+                      )}
+                  </div>
 
-      {/* Move Note Modal */}
-      {showMoveNote && noteToMoveId && (
-          <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center backdrop-blur-sm p-4 animate-fadeIn">
-              <div className="bg-white dark:bg-stone-900 rounded-lg shadow-xl w-full max-w-sm border border-stone-200 dark:border-stone-800 p-6">
-                  <h3 className="text-lg font-bold font-serif text-ink-900 dark:text-stone-100 mb-4 flex items-center gap-2">
-                      <FolderInput size={20} />
-                      Move Note
-                  </h3>
-                  <div className="max-h-60 overflow-y-auto space-y-1 mb-4 border rounded border-stone-100 dark:border-stone-800 p-1">
-                      {folders.map(folder => (
-                          <button
-                              key={folder.id}
-                              onClick={() => confirmMoveNote(folder.id)}
-                              className="w-full text-left px-3 py-2 rounded hover:bg-paper-100 dark:hover:bg-stone-800 text-stone-700 dark:text-stone-300 font-serif text-sm flex items-center gap-2 transition-colors"
-                          >
-                              <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: folder.color || '#78716c' }}></span>
-                              {folder.name}
-                          </button>
-                      ))}
+                  {currentUser.isAdmin && (
+                      <div className="mb-6 p-4 bg-[#3333cc]/5 border border-[#3333cc]/20 rounded-lg">
+                          <h3 className="font-bold text-[#3333cc] mb-2 flex items-center gap-2"><Shield size={16}/> Admin Controls</h3>
+                          <button onClick={() => { setShowSettings(false); setCurrentView('admin'); }} className="w-full bg-[#3333cc] hover:bg-[#2222aa] text-white py-2 rounded font-bold text-sm transition-colors">Open Admin Console</button>
+                      </div>
+                  )}
+
+                  <div className="space-y-4">
+                      <div><label className="block text-sm font-bold text-stone-700 dark:text-stone-300 mb-2">Editor Width</label><div className="flex gap-2">{['narrow', 'medium', 'wide', 'full'].map((w) => (<button key={w} onClick={() => setEditorSettings(prev => ({...prev, maxWidth: w as any}))} className={`px-3 py-1 rounded text-xs uppercase font-bold border ${editorSettings.maxWidth === w ? 'bg-ink-900 text-white border-ink-900 dark:bg-stone-100 dark:text-stone-900' : 'bg-transparent text-stone-500 border-stone-200'}`}>{w}</button>))}</div></div>
+                      <div><label className="block text-sm font-bold text-stone-700 dark:text-stone-300 mb-2">Font Family</label><div className="flex gap-2">{['serif', 'sans', 'mono'].map((f) => (<button key={f} onClick={() => setEditorSettings(prev => ({...prev, fontFamily: f as any}))} className={`px-3 py-1 rounded text-xs uppercase font-bold border ${editorSettings.fontFamily === f ? 'bg-ink-900 text-white border-ink-900 dark:bg-stone-100 dark:text-stone-900' : 'bg-transparent text-stone-500 border-stone-200'}`}>{f}</button>))}</div></div>
                   </div>
-                  <div className="flex justify-end">
-                      <button 
-                          onClick={() => setShowMoveNote(false)}
-                          className="px-4 py-2 bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 rounded font-medium hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors text-sm"
-                      >
-                          Cancel
-                      </button>
-                  </div>
+                  <button onClick={() => setShowSettings(false)} className="w-full bg-stone-100 dark:bg-stone-800 text-ink-900 dark:text-stone-100 py-2 rounded mt-6 font-bold">Close</button>
               </div>
           </div>
-      )}
-
-      {/* Settings Modal */}
-      {showSettings && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center backdrop-blur-sm p-4 animate-fadeIn">
-            <div className="bg-white dark:bg-stone-900 rounded-lg shadow-2xl w-full max-w-lg border border-stone-200 dark:border-stone-700 flex flex-col max-h-[90vh]">
-                <div className="flex justify-between items-center p-6 border-b border-stone-100 dark:border-stone-800">
-                    <h2 className="text-xl font-bold font-serif text-ink-900 dark:text-stone-100">Settings</h2>
-                    <button onClick={() => setShowSettings(false)} className="text-stone-500 hover:text-ink-900 dark:hover:text-stone-200">
-                        <X size={24} />
-                    </button>
-                </div>
-                
-                <div className="p-6 overflow-y-auto space-y-8">
-                    
-                    {/* Admin Section (Only for Admins) */}
-                    {currentUser?.isAdmin && (
-                         <section className="bg-[#3333cc]/10 dark:bg-[#3333cc]/10 p-4 rounded border border-[#3333cc]/20 dark:border-[#3333cc]/30">
-                            <h3 className="text-sm font-bold uppercase text-[#3333cc] dark:text-[#3333cc] mb-2 tracking-wider flex items-center gap-2">
-                                 <Shield size={16} /> Admin Controls
-                            </h3>
-                            <p className="text-xs text-stone-600 dark:text-stone-400 mb-4">Manage other writers and system access.</p>
-                            <button 
-                                onClick={() => { setCurrentView('admin'); setShowSettings(false); }}
-                                className="bg-[#3333cc] text-white px-4 py-2 rounded text-sm font-bold hover:bg-[#3333cc]/80 transition-colors w-full"
-                            >
-                                Open Admin Panel
-                            </button>
-                         </section>
-                    )}
-
-                    {/* Editor Appearance */}
-                    <section>
-                        <h3 className="text-sm font-bold uppercase text-stone-400 mb-4 tracking-wider flex items-center gap-2">
-                             <Type size={16} /> Typography
-                        </h3>
-                        <div className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-stone-700 dark:text-stone-300 mb-2">Font Family</label>
-                                <div className="grid grid-cols-3 gap-2">
-                                    {(['serif', 'sans', 'mono'] as const).map(font => (
-                                        <button
-                                            key={font}
-                                            onClick={() => setEditorSettings({ ...editorSettings, fontFamily: font })}
-                                            className={`p-3 rounded border text-sm transition-all
-                                                ${font === 'serif' ? 'font-serif' : font === 'sans' ? 'font-sans' : 'font-mono'}
-                                                ${editorSettings.fontFamily === font 
-                                                    ? 'bg-ink-900 text-white border-ink-900 dark:bg-stone-100 dark:text-stone-900' 
-                                                    : 'bg-paper-50 dark:bg-stone-800 text-stone-600 dark:text-stone-400 border-stone-200 dark:border-stone-700 hover:border-stone-400'}
-                                            `}
-                                        >
-                                            {font.charAt(0).toUpperCase() + font.slice(1)}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-                            
-                            <div>
-                                <label className="block text-sm font-medium text-stone-700 dark:text-stone-300 mb-2">Font Size</label>
-                                <div className="grid grid-cols-3 gap-2">
-                                    {(['small', 'medium', 'large'] as const).map(size => (
-                                        <button
-                                            key={size}
-                                            onClick={() => setEditorSettings({ ...editorSettings, fontSize: size })}
-                                            className={`p-2 rounded border text-sm transition-all font-serif
-                                                ${editorSettings.fontSize === size 
-                                                    ? 'bg-ink-900 text-white border-ink-900 dark:bg-stone-100 dark:text-stone-900' 
-                                                    : 'bg-paper-50 dark:bg-stone-800 text-stone-600 dark:text-stone-400 border-stone-200 dark:border-stone-700 hover:border-stone-400'}
-                                            `}
-                                        >
-                                            {size.charAt(0).toUpperCase() + size.slice(1)}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-                        </div>
-                    </section>
-
-                    <section>
-                         <h3 className="text-sm font-bold uppercase text-stone-400 mb-4 tracking-wider flex items-center gap-2">
-                             <Layout size={16} /> Layout
-                        </h3>
-                        <div>
-                            <label className="block text-sm font-medium text-stone-700 dark:text-stone-300 mb-2">Page Width</label>
-                            <div className="grid grid-cols-4 gap-2">
-                                {(['narrow', 'medium', 'wide', 'full'] as const).map(width => (
-                                    <button
-                                        key={width}
-                                        onClick={() => setEditorSettings({ ...editorSettings, maxWidth: width })}
-                                        className={`p-2 rounded border text-sm transition-all font-serif
-                                            ${editorSettings.maxWidth === width 
-                                                ? 'bg-ink-900 text-white border-ink-900 dark:bg-stone-100 dark:text-stone-900' 
-                                                : 'bg-paper-50 dark:bg-stone-800 text-stone-600 dark:text-stone-400 border-stone-200 dark:border-stone-700 hover:border-stone-400'}
-                                        `}
-                                    >
-                                        {width.charAt(0).toUpperCase() + width.slice(1)}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-                    </section>
-
-                    <section>
-                        <h3 className="text-sm font-bold uppercase text-stone-400 mb-4 tracking-wider flex items-center gap-2">
-                             <Maximize size={16} /> Publishing
-                        </h3>
-                        <div className="bg-paper-50 dark:bg-stone-800 p-4 rounded border border-stone-200 dark:border-stone-700">
-                            <label className="block text-sm font-bold text-stone-700 dark:text-stone-300 mb-2 font-serif">N8N Webhook URL</label>
-                            <input 
-                                type="url" 
-                                value={webhookUrl}
-                                onChange={(e) => setWebhookUrl(e.target.value)}
-                                placeholder="https://your-n8n-instance.com/webhook/..."
-                                className="w-full border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 text-ink-900 dark:text-stone-200 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-stone-500 outline-none"
-                            />
-                            <p className="text-xs text-stone-500 mt-2">
-                                Use this webhook to connect your published articles to Notion, WordPress, or any other platform via N8N.
-                            </p>
-                        </div>
-                    </section>
-                </div>
-
-                <div className="p-6 border-t border-stone-100 dark:border-stone-800 flex justify-end">
-                    <button 
-                        onClick={() => setShowSettings(false)}
-                        className="bg-ink-900 dark:bg-stone-100 text-paper-50 dark:text-stone-900 px-6 py-2.5 rounded hover:opacity-90 transition-opacity font-serif font-medium"
-                    >
-                        Save & Close
-                    </button>
-                </div>
-            </div>
-        </div>
       )}
     </div>
   );
 };
 
-const ToastContainer: React.FC<{ toasts: ToastMessage[] }> = ({ toasts }) => {
+const App: React.FC = () => {
     return (
-        <div className="fixed top-4 right-4 z-[100] flex flex-col gap-2 pointer-events-none">
-            {toasts.map(toast => (
-                <div 
-                    key={toast.id}
-                    className="bg-white dark:bg-stone-800 border-l-4 rounded shadow-2xl p-4 w-72 toast-enter pointer-events-auto flex items-start gap-3"
-                    style={{ 
-                        borderColor: toast.type === 'achievement' ? '#eab308' : toast.type === 'error' ? '#ef4444' : '#1c1917' 
-                    }}
-                >
-                    <div className={`${toast.type === 'achievement' ? 'text-yellow-500' : 'text-stone-800 dark:text-stone-200'}`}>
-                        {toast.type === 'achievement' && <Trophy size={20} />}
-                        {toast.type === 'error' && <AlertTriangle size={20} />}
-                        {toast.type === 'info' && <Globe size={20} />}
-                        {toast.type === 'success' && <div className="w-5 h-5 rounded-full bg-green-500"></div>}
-                    </div>
-                    <div>
-                        <h4 className="font-bold text-sm text-ink-900 dark:text-stone-100">{toast.title}</h4>
-                        <p className="text-xs text-stone-500 dark:text-stone-400 mt-1">{toast.description}</p>
-                    </div>
-                </div>
-            ))}
-        </div>
+        <ErrorBoundary>
+            <AppContent />
+        </ErrorBoundary>
     );
-}
+};
 
 export default App;
