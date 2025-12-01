@@ -58,13 +58,14 @@
         transition: background-color 0.3s, color 0.3s;
       }
       
-      /* Notion-like Selection Color */
+      /* SELECTION HIGHLIGHT COLOR - High Contrast Update */
       ::selection {
-        background: #e5e5e5; /* Light gray */
-        color: inherit;
+        background: #bae6fd; /* Light Blue 200 - High visibility in light mode */
+        color: #172554; /* Dark Blue Text */
       }
       .dark ::selection {
-        background: #404040; /* Dark gray */
+        background: #fbbf24; /* Amber 400 - High visibility in dark mode */
+        color: #000000;
       }
 
       /* Custom Scrollbar for Vintage Feel */

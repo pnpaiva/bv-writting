@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Folder, Plus, FileText, ChevronRight, ChevronDown, Settings, Trash2, LayoutDashboard, Sun, Moon, X, Lightbulb, LogOut, FolderInput, LayoutTemplate, MoreVertical, ArrowUp, ArrowDown, Music, Volume2, VolumeX, Play, Pause, Volume1 } from 'lucide-react';
+import { Folder, Plus, FileText, ChevronRight, ChevronDown, Settings, Trash2, LayoutDashboard, Sun, Moon, X, Lightbulb, LogOut, FolderInput, LayoutTemplate, MoreVertical, ArrowUp, ArrowDown, Music, Volume2, VolumeX, Play, Pause, Volume1, SkipForward, SkipBack, ListMusic } from 'lucide-react';
 import { Folder as FolderType, Note, ViewMode, User, Template } from '../types';
 
 interface SidebarProps {
@@ -28,6 +28,15 @@ interface SidebarProps {
   onCloseMobile: () => void;
   onLogout: () => void;
 }
+
+const PLAYLIST = [
+  { title: "Gymnopédie No.1", composer: "Erik Satie", url: "https://ia800504.us.archive.org/33/items/ErikSatieGymnopedieNo1/ErikSatieGymnopedieNo1.mp3" },
+  { title: "Moonlight Sonata", composer: "Beethoven", url: "https://ia800307.us.archive.org/17/items/BeethovenMoonlightSonata/Beethoven%20-%20Moonlight%20Sonata.mp3" },
+  { title: "Clair de Lune", composer: "Debussy", url: "https://ia800201.us.archive.org/29/items/ClairDeLune_561/Debussy-ClairDeLune.mp3" },
+  { title: "Nocturne Op.9 No.2", composer: "Chopin", url: "https://ia800304.us.archive.org/28/items/ChopinNocturneOp.9No.2/Chopin_Nocturne_Op_9_No_2_64kb.mp3" },
+  { title: "Air on the G String", composer: "Bach", url: "https://ia902607.us.archive.org/25/items/AirOnTheGString_664/Bach-AirOnTheGString.mp3" },
+  { title: "Morning Mood", composer: "Grieg", url: "https://ia800503.us.archive.org/9/items/GriegMorningMood/Grieg_Morning_Mood.mp3" }
+];
 
 export const Sidebar: React.FC<SidebarProps> = ({
   user,
@@ -70,8 +79,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
   // Music Player State
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
-  const [volume, setVolume] = useState(0.3);
+  const [volume, setVolume] = useState(0.6); // Default to 60% volume
+  const [currentTrackIndex, setCurrentTrackIndex] = useState(0);
+  const [showPlaylist, setShowPlaylist] = useState(false);
+  
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const loadedUrlRef = useRef<string | null>(null);
+
+  const currentTrack = PLAYLIST[currentTrackIndex];
 
   const toggleFolder = (folderId: string) => {
     const newSet = new Set(expandedFolders);
@@ -81,14 +96,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
   };
 
   const toggleMusic = () => {
-    if (!audioRef.current) return;
-    if (isPlaying) {
-      audioRef.current.pause();
-    } else {
-      audioRef.current.play().catch(e => console.error("Audio play failed:", e));
-    }
     setIsPlaying(!isPlaying);
   };
+
+  const nextTrack = () => {
+      setCurrentTrackIndex((prev) => (prev + 1) % PLAYLIST.length);
+      setIsPlaying(true);
+  };
+
+  const prevTrack = () => {
+      setCurrentTrackIndex((prev) => (prev - 1 + PLAYLIST.length) % PLAYLIST.length);
+      setIsPlaying(true);
+  };
+
+  const selectTrack = (index: number) => {
+      setCurrentTrackIndex(index);
+      setIsPlaying(true);
+      setShowPlaylist(false);
+  }
 
   const toggleMute = () => {
     if (!audioRef.current) return;
@@ -109,19 +134,98 @@ export const Sidebar: React.FC<SidebarProps> = ({
       }
   };
 
+  // Initialize Audio & Listeners
   useEffect(() => {
-    // Initialize audio
-    audioRef.current = new Audio("https://upload.wikimedia.org/wikipedia/commons/e/e6/Erik_Satie_-_Gymnopedie_No_1.ogg");
-    audioRef.current.loop = true;
-    audioRef.current.volume = volume;
+    if (!audioRef.current) {
+        audioRef.current = new Audio();
+        audioRef.current.volume = volume;
+        audioRef.current.crossOrigin = "anonymous";
+        // Initialize src immediately to prevent "no supported sources" error
+        audioRef.current.src = PLAYLIST[0].url;
+        loadedUrlRef.current = PLAYLIST[0].url;
+    }
+
+    const audio = audioRef.current;
     
+    // Auto-next track when ended
+    const handleEnded = () => {
+        setCurrentTrackIndex(prev => (prev + 1) % PLAYLIST.length);
+    };
+
+    // Error handling to skip broken tracks
+    const handleError = (e: Event) => {
+        console.warn("Audio error, skipping track:", e);
+        if (isPlaying) {
+             // Delay slightly to prevent rapid loops if internet is down
+             setTimeout(() => setCurrentTrackIndex(prev => (prev + 1) % PLAYLIST.length), 1000);
+        }
+    };
+
+    audio.addEventListener('ended', handleEnded);
+    audio.addEventListener('error', handleError);
     return () => {
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current = null;
-      }
+        audio.removeEventListener('ended', handleEnded);
+        audio.removeEventListener('error', handleError);
     };
   }, []);
+
+  // Handle Track Source Changes
+  useEffect(() => {
+      if (!audioRef.current || !currentTrack) return;
+      const audio = audioRef.current;
+      
+      // Use Ref to track loaded URL to prevent DOM/String mismatches causing reload loops
+      if (loadedUrlRef.current !== currentTrack.url) {
+          audio.src = currentTrack.url;
+          loadedUrlRef.current = currentTrack.url;
+          audio.load();
+          
+          if (isPlaying) {
+              const playPromise = audio.play();
+              if (playPromise !== undefined) {
+                  playPromise.catch(e => {
+                      console.error("Play failed (likely interrupted):", e);
+                  });
+              }
+          }
+      }
+  }, [currentTrackIndex, currentTrack]); // Added currentTrack dependency
+
+  // Handle Play/Pause State
+  useEffect(() => {
+      if (!audioRef.current) return;
+      
+      const audio = audioRef.current;
+      
+      if (isPlaying) {
+          // Safety: Ensure src is set before playing
+          if (!audio.src || audio.src === window.location.href) {
+             audio.src = currentTrack.url;
+             loadedUrlRef.current = currentTrack.url;
+          }
+
+          const playPromise = audio.play();
+          if (playPromise !== undefined) {
+              playPromise.catch(e => {
+                  // Ignore abort errors which happen when skipping tracks quickly
+                  if (e.name !== 'AbortError') {
+                       console.error("Play failed:", e);
+                       setIsPlaying(false);
+                  }
+              });
+          }
+      } else {
+          audio.pause();
+      }
+  }, [isPlaying]);
+
+  // Sync Volume
+  useEffect(() => {
+      if (audioRef.current) {
+          audioRef.current.volume = volume;
+      }
+  }, [volume]);
+
 
   const FOLDER_COLORS = [
       { name: 'Stone', value: '#78716c' },
@@ -321,7 +425,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* List */}
         <div className="flex-1 overflow-y-auto px-3 pb-4">
-          {folders.map(folder => {
+          {folders.length === 0 ? (
+              <div className="px-4 py-8 space-y-3 animate-pulse">
+                  <div className="h-4 bg-paper-200 dark:bg-stone-800 rounded w-3/4"></div>
+                  <div className="h-4 bg-paper-200 dark:bg-stone-800 rounded w-1/2"></div>
+              </div>
+          ) : (
+             folders.map(folder => {
               const folderNotes = notes.filter(n => n.folderId === folder.id);
               const isExpanded = expandedFolders.has(folder.id);
               const isActive = activeFolderId === folder.id && currentView === 'folder';
@@ -412,37 +522,59 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       )}
                   </div>
               )
-          })}
+          })
+          )}
         </div>
 
         {/* Music Player & Footer */}
-        <div className="p-4 border-t border-paper-200 dark:border-stone-800 space-y-1 bg-paper-100 dark:bg-stone-900 z-10">
+        <div className="p-4 border-t border-paper-200 dark:border-stone-800 space-y-1 bg-paper-100 dark:bg-stone-900 z-10 relative">
           
+          {/* Playlist Popover */}
+          {showPlaylist && (
+              <div className="absolute bottom-full left-0 right-0 mb-2 mx-4 bg-white dark:bg-stone-800 rounded-lg shadow-xl border border-stone-200 dark:border-stone-700 overflow-hidden max-h-48 overflow-y-auto">
+                  <div className="px-3 py-2 text-xs font-bold text-stone-400 uppercase bg-paper-50 dark:bg-stone-900 border-b border-stone-100 dark:border-stone-700">Select Track</div>
+                  {PLAYLIST.map((track, idx) => (
+                      <button
+                          key={idx}
+                          onClick={() => selectTrack(idx)}
+                          className={`w-full text-left px-3 py-2 text-sm flex items-center justify-between hover:bg-paper-100 dark:hover:bg-stone-700 ${currentTrackIndex === idx ? 'bg-paper-200 dark:bg-stone-700 text-ink-900 dark:text-stone-100 font-bold' : 'text-stone-600 dark:text-stone-400'}`}
+                      >
+                          <span className="truncate">{track.title}</span>
+                          {currentTrackIndex === idx && <Music size={12} />}
+                      </button>
+                  ))}
+              </div>
+          )}
+
           {/* Classical Music Player */}
           <div className="mb-3 p-3 bg-paper-200 dark:bg-stone-800 rounded-lg flex flex-col gap-2">
               <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                      <div className="p-2 bg-stone-300 dark:bg-stone-700 rounded-full text-stone-600 dark:text-stone-300">
+                  <div className="flex items-center gap-3 overflow-hidden">
+                      <div className="p-2 bg-stone-300 dark:bg-stone-700 rounded-full text-stone-600 dark:text-stone-300 flex-shrink-0">
                           <Music size={14} />
                       </div>
-                      <div>
-                          <div className="text-xs font-bold text-ink-900 dark:text-stone-100 font-serif">Classical Focus</div>
-                          <div className="text-[10px] text-stone-500 truncate max-w-[80px]">Gymnopédie No.1</div>
+                      <div className="min-w-0">
+                          <div className="text-xs font-bold text-ink-900 dark:text-stone-100 font-serif truncate">{currentTrack.title}</div>
+                          <div className="text-[10px] text-stone-500 truncate">{currentTrack.composer}</div>
                       </div>
                   </div>
-                  <div className="flex items-center gap-1">
-                      <button onClick={toggleMusic} className="p-1.5 hover:bg-stone-300 dark:hover:bg-stone-700 rounded text-ink-900 dark:text-stone-200">
-                          {isPlaying ? <Pause size={14} /> : <Play size={14} />}
-                      </button>
-                      <button onClick={toggleMute} className="p-1.5 hover:bg-stone-300 dark:hover:bg-stone-700 rounded text-stone-500">
-                          {isMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
-                      </button>
-                  </div>
+              </div>
+
+              {/* Controls */}
+              <div className="flex items-center justify-between gap-2 mt-1">
+                 <button onClick={prevTrack} className="p-1 hover:bg-stone-300 dark:hover:bg-stone-700 rounded text-stone-500"><SkipBack size={14}/></button>
+                 <button onClick={toggleMusic} className="p-1.5 bg-stone-300 dark:bg-stone-700 hover:bg-stone-400 dark:hover:bg-stone-600 rounded-full text-ink-900 dark:text-stone-200 flex-1 flex justify-center">
+                     {isPlaying ? <Pause size={14} /> : <Play size={14} />}
+                 </button>
+                 <button onClick={nextTrack} className="p-1 hover:bg-stone-300 dark:hover:bg-stone-700 rounded text-stone-500"><SkipForward size={14}/></button>
+                 <button onClick={() => setShowPlaylist(!showPlaylist)} className={`p-1 rounded ${showPlaylist ? 'bg-stone-300 dark:bg-stone-700 text-ink-900' : 'text-stone-500 hover:bg-stone-300 dark:hover:bg-stone-700'}`} title="Playlist"><ListMusic size={14}/></button>
               </div>
               
               {/* Volume Slider */}
               <div className="flex items-center gap-2 px-1">
-                  <Volume1 size={12} className="text-stone-400" />
+                  <button onClick={toggleMute} className="text-stone-400 hover:text-stone-600">
+                     {isMuted ? <VolumeX size={12} /> : <Volume1 size={12} />}
+                  </button>
                   <input 
                       type="range" 
                       min="0" 
@@ -452,7 +584,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       onChange={handleVolumeChange}
                       className="w-full h-1 bg-stone-300 dark:bg-stone-700 rounded-lg appearance-none cursor-pointer accent-ink-900 dark:accent-stone-200"
                   />
-                  <Volume2 size={12} className="text-stone-400" />
               </div>
           </div>
 

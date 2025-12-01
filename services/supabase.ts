@@ -1,22 +1,28 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
+// INTEGRATED CREDENTIALS
+const DEFAULT_URL = "https://lowlkudvulcccjadqfwj.supabase.co";
+const DEFAULT_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxvd2xrdWR2dWxjY2NqYWRxZndqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ2MTEzMTYsImV4cCI6MjA4MDE4NzMxNn0.AHXmR-MJ_emgIMVeFtCq7Sq9cdIzxY2C15MXlB4aLCs";
+
 // GLOBAL SINGLETON
 // We attach to window to ensure the instance survives Hot Module Replacement (HMR) in development.
 // This is critical to stop the "Multiple GoTrueClient" warning flood.
 const getGlobalInstance = () => (window as any).__supabaseInstance as SupabaseClient | null;
 const setGlobalInstance = (client: SupabaseClient | null) => (window as any).__supabaseInstance = client;
 
-// Helper to get config from local storage
-const getConfig = () => {
+// Helper to get config from local storage or defaults
+export const getConfig = () => {
     try {
-        const url = localStorage.getItem('zen_supabase_url');
-        const key = localStorage.getItem('zen_supabase_key');
-        return { 
-            url: url ? url.trim() : null, 
-            key: key ? key.trim() : null 
-        };
+        const localUrl = localStorage.getItem('zen_supabase_url');
+        const localKey = localStorage.getItem('zen_supabase_key');
+        
+        // Use LocalStorage if present (overrides), otherwise use the Integrated Defaults
+        const url = localUrl ? localUrl.trim() : DEFAULT_URL;
+        const key = localKey ? localKey.trim() : DEFAULT_KEY;
+
+        return { url, key };
     } catch {
-        return { url: null, key: null };
+        return { url: DEFAULT_URL, key: DEFAULT_KEY };
     }
 };
 

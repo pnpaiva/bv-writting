@@ -307,9 +307,11 @@ export const RichEditor: React.FC<RichEditorProps> = ({ note, onUpdate, onSaveHi
     const isHighlighted = currentBg && currentBg !== 'transparent' && currentBg !== 'rgba(0, 0, 0, 0)' && currentBg !== 'rgb(255, 255, 255)';
 
     if (isHighlighted) {
+        // Toggle OFF: Remove background and format
         document.execCommand('hiliteColor', false, 'transparent');
-        document.execCommand('removeFormat');
+        document.execCommand('removeFormat'); 
     } else {
+        // Toggle ON: Apply yellow highlight + black text for contrast
         document.execCommand('hiliteColor', false, '#fde047');
         document.execCommand('foreColor', false, '#000000');
         const text = selection.toString();

@@ -1,7 +1,8 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Note, UserStats, Achievement } from '../types';
-import { Menu, PenTool, BookOpen, Clock, TrendingUp, Trophy, Lock, Feather, Flame, Crown, Scroll, ChevronLeft, ChevronRight, Moon, Sun, Calendar, Wind, Target, Zap, Lightbulb, Globe, Maximize, Eye, Image, Video, Table, Type, CheckCircle } from 'lucide-react';
+import { Menu, PenTool, BookOpen, Clock, TrendingUp, Trophy, Lock, Feather, Flame, Crown, Scroll, ChevronLeft, ChevronRight, Moon, Sun, Calendar, Wind, Target, Zap, Lightbulb, Globe, Maximize, Eye, Image, Video, Table, Type, CheckCircle, Cloud, CloudOff } from 'lucide-react';
+import { isSupabaseConfigured } from '../services/supabase';
 
 interface DashboardProps {
   notes: Note[];
@@ -12,6 +13,23 @@ interface DashboardProps {
 
 export const Dashboard: React.FC<DashboardProps> = ({ notes, stats, onToggleSidebar, onNavigateToNote }) => {
   const [currentPage, setCurrentPage] = useState(0);
+  const [isSynced, setIsSynced] = useState(false);
+  
+  useEffect(() => {
+      // Check connection status on mount
+      setIsSynced(isSupabaseConfigured() && navigator.onLine);
+      
+      const handleOnline = () => setIsSynced(isSupabaseConfigured());
+      const handleOffline = () => setIsSynced(false);
+      
+      window.addEventListener('online', handleOnline);
+      window.addEventListener('offline', handleOffline);
+      return () => {
+          window.removeEventListener('online', handleOnline);
+          window.removeEventListener('offline', handleOffline);
+      };
+  }, []);
+
   const itemsPerPage = 8;
   const totalPages = Math.ceil(stats.achievements.length / itemsPerPage);
 
@@ -111,9 +129,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ notes, stats, onToggleSide
 
         <div className="max-w-6xl mx-auto space-y-10">
             {/* Header */}
-            <div>
-                <h1 className="text-3xl md:text-4xl font-serif font-bold text-ink-900 dark:text-stone-100 mb-2">Writing Overview</h1>
-                <p className="text-stone-500 dark:text-stone-400 font-serif italic">"There is no greater agony than bearing an untold story inside you."</p>
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+                <div>
+                    <h1 className="text-3xl md:text-4xl font-serif font-bold text-ink-900 dark:text-stone-100 mb-2">Writing Overview</h1>
+                    <p className="text-stone-500 dark:text-stone-400 font-serif italic">"There is no greater agony than bearing an untold story inside you."</p>
+                </div>
+                <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-bold uppercase tracking-wider ${isSynced ? 'bg-green-100 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-400 dark:border-green-900/30' : 'bg-stone-100 text-stone-500 border-stone-200 dark:bg-stone-800 dark:text-stone-400 dark:border-stone-700'}`}>
+                    {isSynced ? <Cloud size={14} /> : <CloudOff size={14} />}
+                    {isSynced ? 'Cloud Synced' : 'Local Mode'}
+                </div>
             </div>
 
             {/* Main Stats Grid */}

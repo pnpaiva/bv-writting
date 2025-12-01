@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { RichEditor } from './components/RichEditor';
@@ -8,7 +9,7 @@ import { FolderView } from './components/FolderView';
 import { AdminPanel } from './components/AdminPanel';
 import { Folder, Note, ViewMode, User, InspirationItem, EditorSettings, UserStats, Achievement, DailyStat, Template, ToastMessage } from './types';
 import { storage } from './services/storage';
-import { isSupabaseConfigured, saveSupabaseConfig, clearSupabaseConfig, testSupabaseConnection } from './services/supabase';
+import { isSupabaseConfigured, saveSupabaseConfig, clearSupabaseConfig, testSupabaseConnection, getConfig } from './services/supabase';
 import { X, Globe, Type, Layout, Maximize, AlertTriangle, Trophy, FolderPlus, FolderInput, Wifi, WifiOff, Cloud, Shield, Database, Check, RefreshCw } from 'lucide-react';
 
 // --- ERROR BOUNDARY ---
@@ -190,6 +191,7 @@ const reconstructStats = (notes: Note[], existingAchievements?: Achievement[]): 
         }
 
         const updatedAchievements = ACHIEVEMENTS_LIST.map(a => {
+            // Prioritize saved achievements that are already unlocked
             if (existingAchievements) {
                 const savedA = existingAchievements.find(sa => sa.id === a.id);
                 if (savedA && savedA.unlocked) return savedA;
@@ -208,7 +210,7 @@ const reconstructStats = (notes: Note[], existingAchievements?: Achievement[]): 
             if (a.id === 'notes_10' && notes.length >= 10) return { ...a, unlocked: true, unlockedAt: Date.now() };
             if (a.id === 'notes_25' && notes.length >= 25) return { ...a, unlocked: true, unlockedAt: Date.now() };
             if (a.id === 'notes_50' && notes.length >= 50) return { ...a, unlocked: true, unlockedAt: Date.now() };
-            if (a.id === 'organizer' && notes.length > 0) return { ...a, unlocked: true, unlockedAt: Date.now() }; // Fallback for folders not passed
+            if (a.id === 'organizer' && notes.length > 0) return { ...a, unlocked: true, unlockedAt: Date.now() }; 
 
             return a;
         });
@@ -224,7 +226,6 @@ const reconstructStats = (notes: Note[], existingAchievements?: Achievement[]): 
         };
     } catch (e) {
         console.error("Stats reconstruction failed", e);
-        // Fallback safely
         return {
             totalWordsWritten: 0,
             currentStreak: 0,
@@ -295,12 +296,22 @@ const AppContent: React.FC = () => {
   const [dbKey, setDbKey] = useState('');
   const [dbConnected, setDbConnected] = useState(isSupabaseConfigured());
   const [isDbTesting, setIsDbTesting] = useState(false);
+  
+  const [usingDefaults, setUsingDefaults] = useState(false);
 
   useEffect(() => {
+    // Window Resize Handler to update isMobile state
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+
     const handleOnline = () => { setIsOnline(true); addToast('Back Online', 'Syncing your work...', 'success'); setTimeout(() => addToast('Synced', 'All changes saved.', 'success'), 1000); };
     const handleOffline = () => { setIsOnline(false); addToast('Offline Mode', 'You are offline.', 'info'); };
     window.addEventListener('online', handleOnline); window.addEventListener('offline', handleOffline);
-    return () => { window.removeEventListener('online', handleOnline); window.removeEventListener('offline', handleOffline); };
+    return () => { 
+        window.removeEventListener('resize', handleResize);
+        window.removeEventListener('online', handleOnline); 
+        window.removeEventListener('offline', handleOffline); 
+    };
   }, []);
 
   useEffect(() => {
@@ -311,9 +322,11 @@ const AppContent: React.FC = () => {
           setUsers([adminUser]); localStorage.setItem('zen_users', JSON.stringify([adminUser]));
       }
       
-      // Init Settings inputs
-      setDbUrl(localStorage.getItem('zen_supabase_url') || '');
-      setDbKey(localStorage.getItem('zen_supabase_key') || '');
+      // Init Settings inputs from Config (using defaults if available)
+      const config = getConfig();
+      setDbUrl(config.url || '');
+      setDbKey(config.key || '');
+      setUsingDefaults(config.url === "https://lowlkudvulcccjadqfwj.supabase.co");
   }, []);
 
   // --- DATA LOADING ---
@@ -381,13 +394,24 @@ const AppContent: React.FC = () => {
   useEffect(() => { if (currentUser) localStorage.setItem(`zen_${currentUser.email.toLowerCase()}_editor_settings`, JSON.stringify(editorSettings)); }, [editorSettings, currentUser]);
 
   useEffect(() => {
-    if (dataLoaded && editorSettings.fontFamily === 'mono') unlockAchievement('typewriter');
-  }, [editorSettings, dataLoaded]);
+    const unlocked = userStats.achievements.find(a => a.id === 'typewriter')?.unlocked;
+    if (dataLoaded && editorSettings.fontFamily === 'mono' && !unlocked) unlockAchievement('typewriter');
+  }, [editorSettings, dataLoaded, userStats.achievements]);
 
   useEffect(() => {
-      if (darkMode) { document.documentElement.classList.add('dark'); localStorage.setItem('zen_theme', 'dark'); if (dataLoaded) unlockAchievement('dark_side'); } 
-      else { document.documentElement.classList.remove('dark'); localStorage.setItem('zen_theme', 'light'); if (dataLoaded) unlockAchievement('light_side'); }
-  }, [darkMode, dataLoaded]);
+      if (darkMode) { 
+          document.documentElement.classList.add('dark'); 
+          localStorage.setItem('zen_theme', 'dark'); 
+          // Only unlock if not already unlocked to prevent spam
+          const unlocked = userStats.achievements.find(a => a.id === 'dark_side')?.unlocked;
+          if (dataLoaded && !unlocked) unlockAchievement('dark_side'); 
+      } else { 
+          document.documentElement.classList.remove('dark'); 
+          localStorage.setItem('zen_theme', 'light'); 
+          const unlocked = userStats.achievements.find(a => a.id === 'light_side')?.unlocked;
+          if (dataLoaded && !unlocked) unlockAchievement('light_side'); 
+      }
+  }, [darkMode, dataLoaded, userStats.achievements]);
 
   const addToast = (title: string, description: string, type: ToastMessage['type'] = 'info') => {
       const id = Date.now().toString(); setToasts(prev => [...prev, { id, title, description, type }]); setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 5000);
@@ -529,6 +553,10 @@ const AppContent: React.FC = () => {
   });
   
   const handleSaveHighlight = (text: string) => {
+     // Check for duplicate content (exact match)
+     const isDuplicate = inspirationItems.some(i => i.type === 'highlight' && i.content === text);
+     if (isDuplicate) return;
+
      setInspirationItems(prev => [{ id: `i-${Date.now()}`, type: 'highlight', content: text, title: activeNote ? activeNote.title : 'Highlight', snippet: `From note: ${activeNote ? activeNote.title : 'Untitled'}`, createdAt: Date.now(), x: 100, y: 100 }, ...prev]);
      addToast('Highlight Saved', 'Added to Inspiration Board.', 'success');
      unlockAchievement('highlighter');
@@ -548,6 +576,7 @@ const AppContent: React.FC = () => {
       
       if (success) {
           setDbConnected(true);
+          setUsingDefaults(false); // Custom config saved
           addToast("Database Connected", "Restarting to sync...", "success");
           setTimeout(() => window.location.reload(), 1000);
       } else {
@@ -609,37 +638,41 @@ const AppContent: React.FC = () => {
               <div className="bg-white dark:bg-stone-900 p-6 rounded-lg max-w-lg w-full border border-stone-200 dark:border-stone-800 overflow-y-auto max-h-[90vh]">
                   <h2 className="font-bold text-xl mb-4 text-ink-900 dark:text-stone-100">Settings</h2>
                   
-                  {/* Database Connection */}
-                  <div className="mb-6 p-4 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-lg">
-                      <div className="flex items-center justify-between mb-3">
-                          <h3 className="font-bold text-ink-900 dark:text-stone-100 flex items-center gap-2"><Database size={16}/> Database Connection</h3>
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-bold uppercase ${dbConnected ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-stone-200 text-stone-500'}`}>
-                              {dbConnected ? 'Connected' : 'Local Only'}
-                          </span>
-                      </div>
-                      
-                      {!dbConnected ? (
-                          <form onSubmit={handleSaveDbConfig} className="space-y-3">
-                              <div>
-                                  <label className="block text-xs font-bold text-stone-500 uppercase mb-1">Supabase URL</label>
-                                  <input value={dbUrl} onChange={e => setDbUrl(e.target.value)} className="w-full text-xs p-2 bg-white dark:bg-stone-900 border rounded text-ink-900 dark:text-stone-100" placeholder="https://xyz.supabase.co" required />
-                              </div>
-                              <div>
-                                  <label className="block text-xs font-bold text-stone-500 uppercase mb-1">Project API Key (anon/public)</label>
-                                  <input value={dbKey} onChange={e => setDbKey(e.target.value)} type="password" className="w-full text-xs p-2 bg-white dark:bg-stone-900 border rounded text-ink-900 dark:text-stone-100" placeholder="eyJ..." required />
-                                  <p className="text-[10px] text-stone-400">Find this in Supabase &#62; Project Settings &#62; API. Use the 'anon' public key.</p>
-                              </div>
-                              <button type="submit" disabled={isDbTesting} className="w-full bg-ink-900 text-white py-2 rounded text-xs font-bold mt-2 disabled:opacity-50">
-                                  {isDbTesting ? 'Testing Connection...' : 'Connect Database'}
-                              </button>
-                          </form>
-                      ) : (
-                          <div className="space-y-3">
-                              <div className="text-xs text-stone-500">Your notes are synced to the cloud.</div>
-                              <button onClick={handleDisconnectDb} className="w-full bg-red-100 text-red-600 dark:bg-red-900/20 dark:text-red-400 py-2 rounded text-xs font-bold">Disconnect</button>
-                          </div>
-                      )}
-                  </div>
+                  {/* Database Connection - ADMIN ONLY */}
+                  {currentUser.isAdmin && (
+                    <div className="mb-6 p-4 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-lg">
+                        <div className="flex items-center justify-between mb-3">
+                            <h3 className="font-bold text-ink-900 dark:text-stone-100 flex items-center gap-2"><Database size={16}/> Database Connection</h3>
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-bold uppercase ${dbConnected ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-stone-200 text-stone-500'}`}>
+                                {dbConnected ? 'Connected' : 'Local Only'}
+                            </span>
+                        </div>
+                        
+                        {!dbConnected && !usingDefaults ? (
+                            <form onSubmit={handleSaveDbConfig} className="space-y-3">
+                                <div>
+                                    <label className="block text-xs font-bold text-stone-500 uppercase mb-1">Supabase URL</label>
+                                    <input value={dbUrl} onChange={e => setDbUrl(e.target.value)} className="w-full text-xs p-2 bg-white dark:bg-stone-900 border rounded text-ink-900 dark:text-stone-100" placeholder="https://xyz.supabase.co" required />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-stone-500 uppercase mb-1">Project API Key (anon/public)</label>
+                                    <input value={dbKey} onChange={e => setDbKey(e.target.value)} type="password" className="w-full text-xs p-2 bg-white dark:bg-stone-900 border rounded text-ink-900 dark:text-stone-100" placeholder="eyJ..." required />
+                                    <p className="text-[10px] text-stone-400">Find this in Supabase &#62; Project Settings &#62; API. Use the 'anon' public key.</p>
+                                </div>
+                                <button type="submit" disabled={isDbTesting} className="w-full bg-ink-900 text-white py-2 rounded text-xs font-bold mt-2 disabled:opacity-50">
+                                    {isDbTesting ? 'Testing Connection...' : 'Connect Database'}
+                                </button>
+                            </form>
+                        ) : (
+                            <div className="space-y-3">
+                                <div className="text-xs text-stone-500">
+                                    {usingDefaults ? "Using Integrated Database (Automatic)" : "Your notes are synced to the cloud."}
+                                </div>
+                                <button onClick={handleDisconnectDb} className="w-full bg-red-100 text-red-600 dark:bg-red-900/20 dark:text-red-400 py-2 rounded text-xs font-bold">Disconnect</button>
+                            </div>
+                        )}
+                    </div>
+                  )}
 
                   {currentUser.isAdmin && (
                       <div className="mb-6 p-4 bg-[#3333cc]/5 border border-[#3333cc]/20 rounded-lg">
@@ -660,12 +693,10 @@ const AppContent: React.FC = () => {
   );
 };
 
-const App: React.FC = () => {
-    return (
-        <ErrorBoundary>
-            <AppContent />
-        </ErrorBoundary>
-    );
-};
+const App: React.FC = () => (
+    <ErrorBoundary>
+        <AppContent />
+    </ErrorBoundary>
+);
 
 export default App;
