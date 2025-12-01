@@ -1,0 +1,5 @@
+{
+  "name": "Beyond Words",
+  "description": "A minimal, distraction-free writing environment with folder organization, rich text editing, and AI-powered assistance using Gemini. Publish directly to Notion via N8N webhooks.",
+  "requestFramePermissions": []
+}
