@@ -34,6 +34,7 @@ export interface User {
   name: string;
   password?: string; // Stored locally for this simple app
   isAdmin?: boolean;
+  hasSeenTutorial?: boolean;
 }
 
 export interface EditorSettings {

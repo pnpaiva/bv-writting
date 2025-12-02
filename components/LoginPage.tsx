@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
-import { Lock, ArrowRight } from 'lucide-react';
+import { Lock, ArrowRight, ArrowLeft } from 'lucide-react';
 import { User } from '../types';
 
 interface LoginPageProps {
   onLogin: (user: User) => void;
   users: User[]; // Pass the actual list of users
+  onBack: () => void;
 }
 
-export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, users }) => {
+export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, users, onBack }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -37,13 +38,21 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, users }) => {
   };
 
   return (
-    <div className="min-h-screen bg-paper-100 dark:bg-stone-950 flex flex-col items-center justify-center p-4">
+    <div className="min-h-screen bg-paper-100 dark:bg-stone-950 flex flex-col items-center justify-center p-4 relative">
+      
+      <button 
+        onClick={onBack}
+        className="absolute top-8 left-8 p-2 text-stone-500 hover:text-ink-900 dark:hover:text-stone-100 transition-colors flex items-center gap-2 font-bold text-sm uppercase tracking-wider"
+      >
+        <ArrowLeft size={18} /> Back
+      </button>
+
       <div className="w-full max-w-md">
         
         {/* Logo Section */}
         <div className="text-center mb-10">
           <h1 className="text-5xl font-serif font-bold text-ink-900 dark:text-stone-100 mb-2">Beyond Words</h1>
-          <p className="text-stone-500 font-serif italic">Where thoughts become timeless.</p>
+          <p className="text-stone-500 font-serif italic">Login to your workspace.</p>
         </div>
 
         {/* Login Card */}

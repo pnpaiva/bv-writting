@@ -1,20 +1,20 @@
-
 import React, { useState, useEffect } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { RichEditor } from './components/RichEditor';
 import { Dashboard } from './components/Dashboard';
 import { InspirationBoard } from './components/InspirationBoard';
 import { LoginPage } from './components/LoginPage';
+import { LandingPage } from './components/LandingPage';
 import { FolderView } from './components/FolderView';
 import { AdminPanel } from './components/AdminPanel';
 import { Folder, Note, ViewMode, User, InspirationItem, EditorSettings, UserStats, Achievement, DailyStat, Template, ToastMessage } from './types';
 import { storage } from './services/storage';
 import { isSupabaseConfigured, saveSupabaseConfig, clearSupabaseConfig, testSupabaseConnection, getConfig } from './services/supabase';
-import { Globe, AlertTriangle, Trophy, FolderPlus, Cloud, Shield, Database, Check, RefreshCw } from 'lucide-react';
+import { Globe, AlertTriangle, Trophy, FolderPlus, Cloud, Shield, Database, Check, RefreshCw, PenTool, Wand2, Lightbulb, X, ArrowRight, BookOpen, Feather } from 'lucide-react';
 
 // --- ERROR BOUNDARY ---
 interface ErrorBoundaryProps {
-    children: React.ReactNode;
+    children?: React.ReactNode;
 }
 
 interface ErrorBoundaryState {
@@ -23,10 +23,9 @@ interface ErrorBoundaryState {
 }
 
 class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
-    constructor(props: ErrorBoundaryProps) {
-        super(props);
-        this.state = { hasError: false, error: null };
-    }
+    public state: ErrorBoundaryState = { hasError: false, error: null };
+    // Fix: Explicitly declare props to satisfy TS strict checks
+    declare props: Readonly<ErrorBoundaryProps>;
 
     static getDerivedStateFromError(error: Error): ErrorBoundaryState {
         return { hasError: true, error };
@@ -62,6 +61,73 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
         return this.props.children;
     }
 }
+
+// --- TUTORIAL MODAL ---
+const TutorialModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+    const [step, setStep] = useState(0);
+    const steps = [
+        {
+            title: "Welcome to Your Studio",
+            desc: "Beyond Words is a minimalist writing environment designed to help you focus, organize, and create without distractions.",
+            icon: <Feather size={48} className="text-ink-900 dark:text-white" />
+        },
+        {
+            title: "The Editor",
+            desc: "Just start typing. Use the '/' key to open the command menu for headers, lists, and images. Toggle 'Focus Mode' (top right) to hide everything but your text.",
+            icon: <PenTool size={48} className="text-blue-500" />
+        },
+        {
+            title: "Inspiration & AI",
+            desc: "Stuck? Use the AI Assistant (wand icon) to continue your sentences. Highlight text to save it to your Inspiration Board for later.",
+            icon: <Wand2 size={48} className="text-purple-500" />
+        },
+        {
+            title: "Track Progress",
+            desc: "Earn badges and track your daily word count in the Dashboard. Consistency is key to becoming a master scribe.",
+            icon: <Trophy size={48} className="text-yellow-500" />
+        }
+    ];
+
+    const current = steps[step];
+
+    return (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
+            <div className="bg-white dark:bg-stone-900 rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border border-stone-200 dark:border-stone-800 animate-fadeIn">
+                <div className="p-8 text-center flex flex-col items-center">
+                    <div className="w-20 h-20 bg-stone-100 dark:bg-stone-800 rounded-full flex items-center justify-center mb-6">
+                        {current.icon}
+                    </div>
+                    <h2 className="text-2xl font-serif font-bold text-ink-900 dark:text-white mb-2">{current.title}</h2>
+                    <p className="text-stone-500 dark:text-stone-400 mb-8">{current.desc}</p>
+                    
+                    <div className="flex gap-2 w-full">
+                        {step > 0 && (
+                            <button onClick={() => setStep(step - 1)} className="flex-1 py-3 bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 font-bold rounded-lg hover:bg-stone-200 transition-colors">
+                                Previous
+                            </button>
+                        )}
+                        <button 
+                            onClick={() => {
+                                if (step < steps.length - 1) setStep(step + 1);
+                                else onClose();
+                            }} 
+                            className="flex-1 py-3 bg-ink-900 dark:bg-stone-100 text-white dark:text-stone-900 font-bold rounded-lg hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
+                        >
+                            {step < steps.length - 1 ? 'Next' : 'Get Started'}
+                            {step < steps.length - 1 && <ArrowRight size={16} />}
+                        </button>
+                    </div>
+                    
+                    <div className="flex gap-1.5 mt-6">
+                        {steps.map((_, i) => (
+                            <div key={i} className={`w-2 h-2 rounded-full transition-colors ${i === step ? 'bg-ink-900 dark:bg-white' : 'bg-stone-200 dark:bg-stone-800'}`} />
+                        ))}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 // --- TEMPLATES ---
 const TEMPLATES: Template[] = [
@@ -132,7 +198,51 @@ const getInitialFolders = (): Folder[] => [
 ];
 
 const getInitialNotes = (): Note[] => [
-  { id: 'n1', folderId: 'f1', title: 'Welcome to Beyond Words', content: '<h1>Welcome!</h1><p>This is your new <b>vintage</b> writing space.</p><p>Try using the <i>AI Assistant</i> to help you write.</p><blockquote>"Fill your paper with the breathings of your heart." - Wordsworth</blockquote>', updatedAt: Date.now() },
+  { 
+      id: 'n1', 
+      folderId: 'f1', 
+      title: 'Getting Started with Beyond Words', 
+      content: `
+        <h1>Welcome to your new study.</h1>
+        <p>Beyond Words is a minimalist environment designed to help you enter a flow state. This note serves as a quick interactive guide to the platform.</p>
+        
+        <h2>1. The Slash Command</h2>
+        <p>While writing, type <code style="background:#e5e7eb; padding: 2px 4px; border-radius: 4px; font-family: monospace;">/</code> at the beginning of any new line. This opens the magic menu where you can insert:</p>
+        <ul>
+            <li>Headings (H1, H2)</li>
+            <li>Lists (Bullet, Numbered)</li>
+            <li>Images, Videos, and PDFs</li>
+            <li>Callouts and Dividers</li>
+        </ul>
+        
+        <hr />
+
+        <h2>2. Highlighting & Inspiration</h2>
+        <p>Try selecting this sentence right now.</p>
+        <p>You will see a toolbar appear. Click the <b>Highlighter</b> icon. This does two things:</p>
+        <ol>
+            <li>It visually highlights the text in yellow.</li>
+            <li>It saves this snippet to your <b>Inspiration Board</b> automatically.</li>
+        </ol>
+        <div class="callout-block"><p><b>Tip:</b> Visit the Inspiration tab in the sidebar to organize your research and highlights on a visual canvas.</p></div>
+
+        <h2>3. AI Assistance</h2>
+        <p>Writer's block? Click the <b>Wand Icon</b> in the toolbar (or select text and use the menu) to:</p>
+        <ul>
+            <li>Continue your sentence</li>
+            <li>Fix grammar</li>
+            <li>Summarize long text</li>
+        </ul>
+
+        <h2>4. Organization</h2>
+        <p>On the left sidebar, you can create <b>Folders</b> to organize your projects. Drag and drop notes between folders, or use the "Move" option.</p>
+        
+        <blockquote>"Fill your paper with the breathings of your heart." - Wordsworth</blockquote>
+        
+        <p>Enjoy your writing journey.</p>
+      `, 
+      updatedAt: Date.now() 
+  },
 ];
 
 const getInitialInspiration = (): InspirationItem[] => [
@@ -200,7 +310,6 @@ const reconstructStats = (notes: Note[], existingAchievements?: Achievement[]): 
         }
 
         const updatedAchievements = ACHIEVEMENTS_LIST.map(a => {
-            // Prioritize saved achievements that are already unlocked
             if (existingAchievements) {
                 const savedA = existingAchievements.find(sa => sa.id === a.id);
                 if (savedA && savedA.unlocked) return savedA;
@@ -275,6 +384,9 @@ const AppContent: React.FC = () => {
       const stored = localStorage.getItem('zen_current_user');
       return stored ? JSON.parse(stored) : null;
   });
+  const [showLanding, setShowLanding] = useState(!localStorage.getItem('zen_current_user')); // Show landing if not logged in
+  const [showTutorial, setShowTutorial] = useState(false);
+
   const [users, setUsers] = useState<User[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
@@ -383,6 +495,11 @@ const AppContent: React.FC = () => {
                 const savedSettings = localStorage.getItem(`${prefix}_editor_settings`);
                 setEditorSettings(savedSettings ? JSON.parse(savedSettings) : defaultEditorSettings);
                 
+                // Trigger Tutorial if needed
+                if (!currentUser.hasSeenTutorial) {
+                    setShowTutorial(true);
+                }
+
                 setTimeout(() => setDataLoaded(true), 500);
             } catch (err) {
                 console.error("Critical load failure", err);
@@ -443,11 +560,35 @@ const AppContent: React.FC = () => {
       const normalizedUser = { ...user, email: user.email.toLowerCase() };
       localStorage.setItem('zen_current_user', JSON.stringify(normalizedUser)); 
       setCurrentUser(normalizedUser); 
+      setShowLanding(false);
       addToast(`Welcome back, ${user.name}`, 'Your desk is ready.', 'info'); 
       setCurrentView('dashboard'); 
   };
   
-  const handleLogout = () => { localStorage.removeItem('zen_current_user'); setCurrentUser(null); setDataLoaded(false); setFolders([]); setNotes([]); setInspirationItems([]); setCurrentView('dashboard'); };
+  const handleLogout = () => { 
+      localStorage.removeItem('zen_current_user'); 
+      setCurrentUser(null); 
+      setDataLoaded(false); 
+      setFolders([]); 
+      setNotes([]); 
+      setInspirationItems([]); 
+      setCurrentView('dashboard');
+      setShowLanding(true); 
+  };
+
+  const finishTutorial = () => {
+      setShowTutorial(false);
+      if (currentUser) {
+          const updatedUser = { ...currentUser, hasSeenTutorial: true };
+          setCurrentUser(updatedUser);
+          localStorage.setItem('zen_current_user', JSON.stringify(updatedUser));
+          
+          // Update in users list logic
+          const updatedUsers = users.map(u => u.email === currentUser.email ? { ...u, hasSeenTutorial: true } : u);
+          setUsers(updatedUsers);
+          localStorage.setItem('zen_users', JSON.stringify(updatedUsers));
+      }
+  };
   
   const handleCreateFolderClick = () => { setNewFolderName(''); setShowCreateFolder(true); };
   const confirmCreateFolder = (e: React.FormEvent) => {
@@ -608,11 +749,26 @@ const AppContent: React.FC = () => {
   const activeNote = notes.find(n => n.id === activeNoteId);
   const activeFolder = folders.find(f => f.id === activeFolderId);
 
-  if (!currentUser) return <><ToastContainer toasts={toasts} /><LoginPage onLogin={handleLogin} users={users} /></>;
+  // --- ROUTING RENDER LOGIC ---
+  if (showLanding && !currentUser) {
+      return <LandingPage onEnter={() => setShowLanding(false)} />;
+  }
+
+  if (!currentUser) {
+      return (
+        <>
+            <ToastContainer toasts={toasts} />
+            <LoginPage onLogin={handleLogin} users={users} onBack={() => setShowLanding(true)} />
+        </>
+      );
+  }
 
   return (
     <div className="flex h-screen w-full overflow-hidden font-sans bg-paper-50 dark:bg-stone-950 transition-colors">
       <ToastContainer toasts={toasts} />
+      
+      {showTutorial && <TutorialModal onClose={finishTutorial} />}
+
       <Sidebar user={currentUser} folders={folders} notes={notes} activeNoteId={activeNoteId} activeFolderId={activeFolderId} currentView={currentView} darkMode={darkMode} isMobile={isMobile} isOpen={sidebarOpen} onSelectNote={(id) => { setActiveNoteId(id); setCurrentView('editor'); }} onSelectFolder={(id) => { setActiveFolderId(id); setCurrentView('folder'); }} onCreateFolder={handleCreateFolderClick} onUpdateFolder={handleUpdateFolder} onReorderFolder={handleReorderFolders} onCreateNote={handleCreateNote} onDeleteNote={handleDeleteNote} onMoveNote={handleMoveNoteClick} onOpenSettings={() => setShowSettings(true)} onChangeView={setCurrentView} onToggleTheme={() => setDarkMode(!darkMode)} onCloseMobile={() => setSidebarOpen(false)} onLogout={handleLogout} templates={TEMPLATES} />
       <main className="flex-1 flex flex-col h-full overflow-hidden relative">
         {currentView === 'dashboard' && <Dashboard notes={notes} stats={userStats} onToggleSidebar={() => setSidebarOpen(true)} onNavigateToNote={(id) => { setActiveNoteId(id); setCurrentView('editor'); }} />}
@@ -703,10 +859,12 @@ const AppContent: React.FC = () => {
   );
 };
 
-const App: React.FC = () => (
-    <ErrorBoundary>
-        <AppContent />
-    </ErrorBoundary>
-);
+const App: React.FC = () => {
+    return (
+        <ErrorBoundary>
+            <AppContent />
+        </ErrorBoundary>
+    );
+};
 
 export default App;
